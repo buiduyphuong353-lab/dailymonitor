@@ -140,7 +140,6 @@ def process_data(stt, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, data
             gd_tuoi = 1;  goc_tong_phut = None 
 
             bang_bao_cao_ngay = []
-            stt_ngay = 1
 
             for ngay in danh_sach_ngay:
                 so_lan = thong_ke_ngay[ngay]['So_lan']
@@ -173,7 +172,6 @@ def process_data(stt, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, data
                     "EC_Thực_Tế": round(ec_tt_tb, 2),
                     "pH_TB": round(ph_tb, 2)
                 })
-                stt_ngay += 1
 
             df = pd.DataFrame(bang_bao_cao_ngay)
             ket_qua_bao_cao.append({
@@ -191,11 +189,9 @@ def process_data(stt, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, data
 # ==========================================
 # 📊 QUẢN LÝ LUỒNG CHẠY & HIỂN THỊ
 # ==========================================
-# Yêu cầu phải upload đủ 2 file mới chạy
 if file_tuoi_upload is None or file_cham_phan_upload is None:
     st.info("👈 Vui lòng tải lên cả 2 file JSON ở thanh bên trái để bắt đầu phân tích dữ liệu.")
 else:
-    # Đọc dữ liệu từ file upload
     try:
         raw_data_tuoi = json.load(file_tuoi_upload)
         raw_data_cp = json.load(file_cham_phan_upload)
@@ -204,7 +200,7 @@ else:
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
                 GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, 
-                raw_data_tuoi, raw_data_cp # Truyền trực tiếp data vào hàm
+                raw_data_tuoi, raw_data_cp 
             )
 
         if ket_qua is None:
@@ -218,16 +214,14 @@ else:
                 
                 df = mua_vu['data']
                 
-                # --- MENU XỔ XUỐNG CHỌN TIÊU CHÍ BIỂU ĐỒ ---
+                # --- ĐÃ SỬA: MENU CHỈ CÒN 3 TIÊU CHÍ VÀ MAP VỚI CỘT GIAI ĐOẠN TƯƠNG ỨNG ---
                 tieuchi_mapping = {
-                    "⏱️ Tổng Thời Gian Tưới / Ngày (Phút)": "Tổng_TG_Phút",
-                    "🎯 EC Yêu Cầu (Trung bình)": "EC_Yêu_Cầu",
-                    "🧪 EC Thực Tế (Trung bình)": "EC_Thực_Tế",
-                    "⚗️ pH (Trung bình)": "pH_TB",
-                    "💧 Số lần tưới / Ngày": "Số Lần"
+                    "🎯 EC Yêu Cầu (Trung bình)": {"cot_gia_tri": "EC_Yêu_Cầu", "cot_giai_doan": "GĐ_EC_YC"},
+                    "🧪 EC Thực Tế (Trung bình)": {"cot_gia_tri": "EC_Thực_Tế", "cot_giai_doan": "GĐ_EC_Thực"},
+                    "⏱️ Tổng Thời Gian Tưới / Ngày (Phút)": {"cot_gia_tri": "Tổng_TG_Phút", "cot_giai_doan": "GĐ_Tưới"}
                 }
                 
-                col1, col2 = st.columns([1, 3])
+                col1, col2 = st.columns([1, 2])
                 with col1:
                     st.markdown("<br>", unsafe_allow_html=True)
                     tieuchi_chon = st.selectbox(
@@ -236,19 +230,24 @@ else:
                         key=f"selectbox_{idx}"
                     )
                 
-                # --- VẼ BIỂU ĐỒ BẰNG PLOTLY ---
-                cot_du_lieu = tieuchi_mapping[tieuchi_chon]
+                # --- ĐÃ SỬA: TÔ MÀU BẢNG MÀU THEO GIAI ĐOẠN ---
+                cot_du_lieu = tieuchi_mapping[tieuchi_chon]["cot_gia_tri"]
+                cot_giai_doan = tieuchi_mapping[tieuchi_chon]["cot_giai_doan"]
+                
                 fig = px.bar(
                     df, 
                     x="Ngày_Str", 
                     y=cot_du_lieu, 
+                    color=cot_giai_doan, # Chìa khóa để mỗi giai đoạn có 1 màu
                     text=cot_du_lieu,
                     title=f"Biểu đồ {tieuchi_chon.split('(')[0].strip()}",
-                    labels={"Ngày_Str": "Ngày", cot_du_lieu: "Giá trị"},
-                    color_discrete_sequence=['#2ecc71'] if "TG" in cot_du_lieu else ['#3498db']
+                    labels={"Ngày_Str": "Ngày", cot_du_lieu: "Giá trị", cot_giai_doan: "Giai đoạn"},
+                    color_discrete_sequence=px.colors.qualitative.Plotly # Sử dụng bảng màu đa dạng của Plotly
                 )
+                
                 fig.update_traces(textposition='outside')
-                fig.update_layout(xaxis_tickangle=-45)
+                # Tăng kích thước y-axis một chút để chữ không bị cắt khi hiển thị outside
+                fig.update_layout(xaxis_tickangle=-45, yaxis=dict(range=[0, df[cot_du_lieu].max() * 1.2])) 
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
