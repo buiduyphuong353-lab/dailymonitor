@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import json
 from datetime import datetime, timedelta
 import plotly.express as px
@@ -163,22 +162,22 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             stages_ec_yc = phan_tich_giai_doan_array(danh_sach_ngay, ec_yc_vals, ss_ec_yc, so_ngay_on_dinh)
             stages_tuoi = phan_tich_giai_doan_array(danh_sach_ngay, tong_phut_vals, ss_tong_phut, so_ngay_on_dinh)
 
+            # KHÔNG DÙNG PANDAS DATAFRAME NỮA, DÙNG LIST DICT THUẦN
             bang_bao_cao_ngay = []
             for i, ngay in enumerate(danh_sach_ngay):
                 bang_bao_cao_ngay.append({
-                    "Ngày": ngay, "Ngày_Str": ngay.strftime("%d/%m/%Y"),
+                    "Ngày_Str": ngay.strftime("%d/%m/%Y"),
                     "GĐ_EC_Thực": f"GĐ {stages_ec_tt[ngay]}",
                     "GĐ_EC_YC": f"GĐ {stages_ec_yc[ngay]}",
                     "GĐ_Tưới": f"GĐ {stages_tuoi[ngay]}",
-                    "Số Lần": thong_ke[ngay]['So_lan'],
+                    "Số_Lần": thong_ke[ngay]['So_lan'],
                     "Tổng_TG_Phút": round(tong_phut_vals[i], 2),
                     "EC_Yêu_Cầu": round(ec_yc_vals[i], 2),
                     "EC_Thực_Tế": round(ec_tt_vals[i], 2),
                     "pH_TB": round(thong_ke[ngay]['Tong_pH'] / thong_ke[ngay]['So_lan'], 2)
                 })
 
-            df = pd.DataFrame(bang_bao_cao_ngay)
-            ket_qua_bao_cao.append({"ngay_bat_dau": ngay_bat_dau, "ngay_ket_thuc": ngay_ket_thuc, "tong_lan_tuoi": tong_lan, "data": df})
+            ket_qua_bao_cao.append({"ngay_bat_dau": ngay_bat_dau, "ngay_ket_thuc": ngay_ket_thuc, "tong_lan_tuoi": tong_lan, "data": bang_bao_cao_ngay})
             
         return ket_qua_bao_cao, "Thành công"
     except Exception as e: return None, f"❌ Lỗi xử lý dữ liệu: {e}"
@@ -206,11 +205,11 @@ else:
             for idx, mua_vu in enumerate(ket_qua):
                 st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
                 
-                # SỬA LỖI 1: Tính toán thêm tổng số ngày của mùa vụ
                 so_ngay_mua_vu = (mua_vu['ngay_ket_thuc'] - mua_vu['ngay_bat_dau']).days + 1
                 st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
                 
-                df = mua_vu['data']
+                # Biến data lúc này là một List chứa các Dictionary (thay vì DataFrame)
+                data_mua_vu = mua_vu['data'] 
                 
                 tieuchi_mapping = {
                     "🎯 EC Yêu Cầu (Trung bình)": {"cot_gia_tri": "EC_Yêu_Cầu", "cot_giai_doan": "GĐ_EC_YC"},
@@ -226,20 +225,24 @@ else:
                 cot_du_lieu = tieuchi_mapping[tieuchi_chon]["cot_gia_tri"]
                 cot_giai_doan = tieuchi_mapping[tieuchi_chon]["cot_giai_doan"]
                 
+                # Tìm giá trị lớn nhất trong mảng bằng kỹ thuật List Comprehension thay vì .max() của pandas
+                max_y = max([row[cot_du_lieu] for row in data_mua_vu]) * 1.2 if data_mua_vu else 1
+
                 fig = px.bar(
-                    df, x="Ngày_Str", y=cot_du_lieu, color=cot_giai_doan, text=cot_du_lieu,
+                    data_mua_vu, x="Ngày_Str", y=cot_du_lieu, color=cot_giai_doan, text=cot_du_lieu,
                     title=f"Biểu đồ {tieuchi_chon.split('(')[0].strip()}",
                     labels={"Ngày_Str": "Ngày", cot_du_lieu: "Giá trị", cot_giai_doan: "Giai đoạn"},
                     color_discrete_sequence=px.colors.qualitative.Plotly 
                 )
                 fig.update_traces(textposition='outside')
-                fig.update_layout(xaxis_tickangle=-45, yaxis=dict(range=[0, df[cot_du_lieu].max() * 1.2])) 
+                fig.update_layout(xaxis_tickangle=-45, yaxis=dict(range=[0, max_y])) 
                 st.plotly_chart(fig, use_container_width=True)
                 
                 st.markdown("---")
                 st.markdown(f"#### 🔍 Chi Tiết Theo {cot_giai_doan.replace('_', ' ')}")
                 
-                danh_sach_gd = df[cot_giai_doan].unique().tolist()
+                # Trích xuất danh sách các Giai đoạn không trùng lặp (Dùng hàm set trong Python thuần)
+                danh_sach_gd = list(set([row[cot_giai_doan] for row in data_mua_vu]))
                 danh_sach_gd.sort(key=lambda x: int(x.replace('GĐ ', ''))) 
                 danh_sach_chon = ["Tất cả các Giai đoạn"] + danh_sach_gd
                 
@@ -249,36 +252,53 @@ else:
                     key=f"select_gd_{idx}"
                 )
                 
+                # Lọc dữ liệu bằng List Comprehension thay vì mask của pandas
                 if gd_chon == "Tất cả các Giai đoạn":
-                    df_filtered = df
+                    data_filtered = data_mua_vu
                 else:
-                    df_filtered = df[df[cot_giai_doan] == gd_chon]
+                    data_filtered = [row for row in data_mua_vu if row[cot_giai_doan] == gd_chon]
                     
-                    st.info(f"**📊 Thống kê tóm tắt cho {gd_chon}:**")
-                    
-                    # SỬA LỖI 2: Chia lại tỉ lệ các cột (cột 1 rộng gấp đôi cột 2) để chống tràn chữ
-                    col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns([2, 1, 1.2, 1.2, 1.2, 1])
-                    
-                    ngay_dau = df_filtered['Ngày_Str'].iloc[0]
-                    ngay_cuoi = df_filtered['Ngày_Str'].iloc[-1]
-                    so_ngay = len(df_filtered)
-                    
-                    col_m1.metric("Thời gian", f"{ngay_dau} - {ngay_cuoi}")
-                    col_m2.metric("Kéo dài", f"{so_ngay} ngày")
-                    col_m3.metric("EC Yêu Cầu (TB)", f"{round(df_filtered['EC_Yêu_Cầu'].mean(), 2)}")
-                    col_m4.metric("EC Thực Tế (TB)", f"{round(df_filtered['EC_Thực_Tế'].mean(), 2)}")
-                    col_m5.metric("TG Tưới (TB)", f"{round(df_filtered['Tổng_TG_Phút'].mean(), 2)} phút")
-                    col_m6.metric("pH (TB)", f"{round(df_filtered['pH_TB'].mean(), 2)}")
-                    st.markdown("<br>", unsafe_allow_html=True)
+                    if data_filtered: # Đảm bảo có dữ liệu
+                        st.info(f"**📊 Thống kê tóm tắt cho {gd_chon}:**")
+                        col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns([2, 1, 1.2, 1.2, 1.2, 1])
+                        
+                        ngay_dau = data_filtered[0]['Ngày_Str']
+                        ngay_cuoi = data_filtered[-1]['Ngày_Str']
+                        so_ngay = len(data_filtered)
+                        
+                        # Tính trung bình thủ công: Sum / Chiều dài
+                        tb_ec_yc = sum(row['EC_Yêu_Cầu'] for row in data_filtered) / so_ngay
+                        tb_ec_tt = sum(row['EC_Thực_Tế'] for row in data_filtered) / so_ngay
+                        tb_tg = sum(row['Tổng_TG_Phút'] for row in data_filtered) / so_ngay
+                        tb_ph = sum(row['pH_TB'] for row in data_filtered) / so_ngay
+                        
+                        col_m1.metric("Thời gian", f"{ngay_dau} - {ngay_cuoi}")
+                        col_m2.metric("Kéo dài", f"{so_ngay} ngày")
+                        col_m3.metric("EC Yêu Cầu (TB)", f"{round(tb_ec_yc, 2)}")
+                        col_m4.metric("EC Thực Tế (TB)", f"{round(tb_ec_tt, 2)}")
+                        col_m5.metric("TG Tưới (TB)", f"{round(tb_tg, 2)} phút")
+                        col_m6.metric("pH (TB)", f"{round(tb_ph, 2)}")
+                        st.markdown("<br>", unsafe_allow_html=True)
 
                 st.markdown("#### 📋 Bảng Dữ Liệu")
-                df_display = df_filtered.rename(columns={
-                    "Ngày_Str": "📅 Ngày", "GĐ_EC_Thực": "🏷️ GĐ(EC.Thực)", "GĐ_EC_YC": "🏷️ GĐ(EC.YC)",
-                    "GĐ_Tưới": "🏷️ GĐ(Tưới)", "Số Lần": "💧 Số Lần", "Tổng_TG_Phút": "⏱️ Tổng TG (Ph)",
-                    "EC_Yêu_Cầu": "🎯 EC Y.Cầu", "EC_Thực_Tế": "🧪 EC T.Tế", "pH_TB": "⚗️ pH TB"
-                }).drop(columns=["Ngày"])
                 
-                st.dataframe(df_display, use_container_width=True)
+                # Tạo bảng dữ liệu hiển thị (Mapping lại tên cột giống rename của pandas)
+                data_display = []
+                for row in data_filtered:
+                    data_display.append({
+                        "📅 Ngày": row["Ngày_Str"],
+                        "🏷️ GĐ(EC.Thực)": row["GĐ_EC_Thực"],
+                        "🏷️ GĐ(EC.YC)": row["GĐ_EC_YC"],
+                        "🏷️ GĐ(Tưới)": row["GĐ_Tưới"],
+                        "💧 Số Lần": row["Số_Lần"],
+                        "⏱️ Tổng TG (Ph)": row["Tổng_TG_Phút"],
+                        "🎯 EC Y.Cầu": row["EC_Yêu_Cầu"],
+                        "🧪 EC T.Tế": row["EC_Thực_Tế"],
+                        "⚗️ pH TB": row["pH_TB"]
+                    })
+                
+                # Streamlit hỗ trợ truyền trực tiếp List[Dict] vào st.dataframe rất tốt
+                st.dataframe(data_display, use_container_width=True)
                 st.divider()
 
     except json.JSONDecodeError:
