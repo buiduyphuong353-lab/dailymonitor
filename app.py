@@ -27,7 +27,7 @@ st.sidebar.subheader("Ngưỡng phân chia Giai đoạn")
 # Thêm ô setting "Số ngày ổn định" để chống nhiễu 1 ngày
 SO_NGAY_ON_DINH = st.sidebar.number_input("⏳ Số ngày ổn định (Chống nhiễu)", value=2, step=1, min_value=1, help="Số ngày liên tiếp có giá trị same same nhau để được công nhận là một Giai đoạn mới.")
 
-SAI_SO_EC_TT = st.sidebar.number_input("1. Sai số EC Thực Tế", value=0.2, step=0.05)
+SAI_SO_EC_TT = st.sidebar.number_input("1. Sai số EC Thực Tế", value=0.20, step=0.05)
 SAI_SO_EC_YC = st.sidebar.number_input("2. Sai số EC Yêu Cầu", value=0.15, step=0.05)
 SAI_SO_TONG_PHUT = st.sidebar.number_input("3. Sai số Tổng Thời Gian (Phút)", value=10.0, step=1.0)
 
@@ -245,12 +245,50 @@ else:
                 fig.update_layout(xaxis_tickangle=-45, yaxis=dict(range=[0, df[cot_du_lieu].max() * 1.2])) 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                st.markdown("#### 📋 Bảng Dữ Liệu Chi Tiết")
-                df_display = df.rename(columns={
+                # --- PHẦN CODE NÂNG CẤP XEM CHI TIẾT GIAI ĐOẠN ---
+                st.markdown("---")
+                st.markdown(f"#### 🔍 Chi Tiết Theo {cot_giai_doan.replace('_', ' ')}")
+                
+                # 1. Lấy danh sách các giai đoạn duy nhất hiện có và sắp xếp theo số (GĐ 1, GĐ 2...)
+                danh_sach_gd = df[cot_giai_doan].unique().tolist()
+                danh_sach_gd.sort(key=lambda x: int(x.replace('GĐ ', ''))) # Sắp xếp chuẩn số học
+                danh_sach_chon = ["Tất cả các Giai đoạn"] + danh_sach_gd
+                
+                # 2. Tạo cửa sổ xổ xuống (Selectbox) để chọn Giai đoạn
+                gd_chon = st.selectbox(
+                    "👉 Chọn Giai đoạn để xem chi tiết:", 
+                    danh_sach_chon, 
+                    key=f"select_gd_{idx}"
+                )
+                
+                # 3. Lọc dữ liệu theo Giai đoạn đã chọn
+                if gd_chon == "Tất cả các Giai đoạn":
+                    df_filtered = df
+                else:
+                    df_filtered = df[df[cot_giai_doan] == gd_chon]
+                    
+                    # Hiện thống kê tóm tắt
+                    st.info(f"**📊 Thống kê tóm tắt cho {gd_chon}:**")
+                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    
+                    ngay_dau = df_filtered['Ngày_Str'].iloc[0]
+                    ngay_cuoi = df_filtered['Ngày_Str'].iloc[-1]
+                    so_ngay = len(df_filtered)
+                    
+                    col_m1.metric("Thời gian", f"{ngay_dau} ➡️ {ngay_cuoi}")
+                    col_m2.metric("Kéo dài", f"{so_ngay} ngày")
+                    col_m3.metric("EC Yêu Cầu (Trung bình)", f"{round(df_filtered['EC_Yêu_Cầu'].mean(), 2)}")
+                    col_m4.metric("Thời gian tưới (Trung bình)", f"{round(df_filtered['Tổng_TG_Phút'].mean(), 2)} phút")
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                # 4. Hiển thị bảng dữ liệu đã lọc
+                st.markdown("#### 📋 Bảng Dữ Liệu")
+                df_display = df_filtered.rename(columns={
                     "Ngày_Str": "📅 Ngày", "GĐ_EC_Thực": "🏷️ GĐ(EC.Thực)", "GĐ_EC_YC": "🏷️ GĐ(EC.YC)",
                     "GĐ_Tưới": "🏷️ GĐ(Tưới)", "Số Lần": "💧 Số Lần", "Tổng_TG_Phút": "⏱️ Tổng TG (Ph)",
                     "EC_Yêu_Cầu": "🎯 EC Y.Cầu", "EC_Thực_Tế": "🧪 EC T.Tế", "pH_TB": "⚗️ pH TB"
                 }).drop(columns=["Ngày"])
+                
                 st.dataframe(df_display, use_container_width=True)
                 st.divider()
 
