@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 from datetime import datetime, timedelta
+import plotly.express as px # 🌟 Thêm thư viện vẽ biểu đồ chuyên nghiệp
 
 # ==========================================
 # 🎨 CẤU HÌNH GIAO DIỆN STREAMLIT
@@ -22,6 +23,7 @@ with st.sidebar:
     file_cham_phan = st.file_uploader("📂 Upload 'châm phân trung gian.json'", type=['json'])
     
     st.markdown("---")
+    # STT mặc định là "4" theo ảnh của bạn
     stt_can_tim = st.text_input("STT Cần tìm (Bồn/Van):", value="4")
     
     st.markdown("**Thông số phân tích:**")
@@ -189,19 +191,46 @@ if st.button("🚀 Chạy Phân Tích Dữ Liệu", type="primary", use_containe
                             })
 
                         if bang_bao_cao_ngay:
-                            # In bảng siêu xịn bằng Pandas DataFrame
+                            # 1. Hiển thị bảng dữ liệu (Giữ nguyên)
                             df = pd.DataFrame(bang_bao_cao_ngay)
-                            # Đổi index để bắt đầu từ 1 thay vì 0
-                            df.index = df.index + 1
-                            st.dataframe(df, use_container_width=True)
+                            df_table = df.copy() # Tạo bản sao cho bảng hiển thị
+                            df_table.index = df_table.index + 1
+                            st.dataframe(df_table, use_container_width=True)
                             
+                            # 🌟 2. PHẦN MỚI: TẠO VÀ HIỂN THỊ BIỂU ĐỒ TRỰC QUAN 🌟
+                            st.markdown("#### 📊 Biểu Đồ Xu Hướng EC Thực Tế Theo Giai Đoạn")
+                            
+                            # Chuẩn bị dữ liệu riêng cho biểu đồ
+                            df_chart = df.copy()
+                            # Chuyển đổi cột Ngày sang kiểu datetime để trục X chạy đúng
+                            df_chart['📅 Ngày'] = pd.to_datetime(df_chart['📅 Ngày'], format='%d/%m/%Y')
+                            # Đảm bảo cột Giai đoạn là chuỗi để Plotly phân loại màu
+                            df_chart['🏷️ GĐ'] = df_chart['🏷️ GĐ'].astype(str)
+
+                            # Vẽ biểu đồ đường với Plotly Express
+                            fig = px.line(df_chart, 
+                                          x='📅 Ngày', 
+                                          y='🧪 EC Thực Tế', 
+                                          color='🏷️ GĐ', # 🌟 Đây là chìa khóa để phân màu theo giai đoạn
+                                          title=f'Xu hướng EC Thực Tế TB hàng ngày - Mùa Vụ Số {so_thu_tu_mua_that}',
+                                          labels={'📅 Ngày': 'Thời gian (Ngày)', '🧪 EC Thực Tế': 'EC Thực Tế (TB)', '🏷️ GĐ': 'Giai đoạn'},
+                                          markers=True # Thêm điểm tròn tại mỗi ngày dữ liệu
+                                         )
+                            
+                            # Tùy chỉnh thêm một chút cho đẹp và tương tác tốt hơn
+                            fig.update_traces(hovertemplate='Ngày: %{x|%d/%m/%Y}<br>EC Thực Tế: %{y:.2f}')
+                            fig.update_layout(xaxis_tickformat='%d/%m/%Y') # Định dạng ngày trên trục X
+
+                            # Hiển thị biểu đồ vào Streamlit
+                            st.plotly_chart(fig, use_container_width=True)
+
                         st.markdown("---")
                         so_thu_tu_mua_that += 1
 
                     if not co_du_lieu:
                         st.warning("Không tìm thấy mùa vụ nào đủ điều kiện (có thể do các mùa vụ quá ngắn).")
                     else:
-                        st.success("✅ Đã phân tích xong toàn bộ dữ liệu!")
+                        st.success("✅ Đã phân tích và trực quan hóa xong toàn bộ dữ liệu!")
             
             except Exception as e:
                 st.error(f"❌ Đã xảy ra lỗi trong quá trình xử lý: {e}")
