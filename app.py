@@ -3,7 +3,6 @@ import pandas as pd
 import json
 from datetime import datetime, timedelta
 import plotly.express as px
-import os
 
 # Cấu hình trang Streamlit
 st.set_page_config(page_title="Dashboard Phân Tích Tưới", page_icon="🌱", layout="wide")
@@ -13,6 +12,11 @@ st.title("🌱 Dashboard Phân Tích Giai Đoạn Tưới Nhỏ Giọt")
 # ==========================================
 # ⚙️ GIAO DIỆN CÀI ĐẶT (SIDEBAR)
 # ==========================================
+st.sidebar.header("📁 Tải Dữ Liệu Lên")
+file_tuoi_upload = st.sidebar.file_uploader("1. Tải file Lịch nhỏ giọt (.json)", type=['json'])
+file_cham_phan_upload = st.sidebar.file_uploader("2. Tải file Châm phân (.json)", type=['json'])
+
+st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Cấu hình thông số")
 
 STT_CAN_TIM = st.sidebar.text_input("STT Cần Phân Tích", value="4")
@@ -41,32 +45,21 @@ def lay_ec_yeu_cau_tai_thoi_diem(tg_tuoi, lich_su_ec):
     return ec_hien_tai
 
 @st.cache_data
-def process_data(stt, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max):
-    file_tuoi = 'Lich nho giotj.json'
-    file_cham_phan = 'châm phân trung gian.json'
-    
-    if not os.path.exists(file_tuoi) or not os.path.exists(file_cham_phan):
-        return None, "❌ Không tìm thấy file JSON. Vui lòng đặt file cùng thư mục với app.py."
-
+def process_data(stt, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, data_tuoi, data_cp):
     try:
-        # Bước 1: Đọc EC Yêu Cầu
+        # Bước 1: Lấy lịch sử EC Yêu Cầu
         lich_su_ec_yc = []
-        with open(file_cham_phan, 'r', encoding='utf-8') as f_cp:
-            data_cp = json.load(f_cp)
-            for item in data_cp:
-                if str(item.get('STT')) == stt and item.get('Thời gian') and 'EC yêu cầu' in item:
-                    try:
-                        tg = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
-                        ec_val = float(item.get('EC yêu cầu', 0)) / 100.0
-                        lich_su_ec_yc.append({'Thoi_gian': tg, 'EC_YC': ec_val})
-                    except ValueError:
-                        pass
+        for item in data_cp:
+            if str(item.get('STT')) == stt and item.get('Thời gian') and 'EC yêu cầu' in item:
+                try:
+                    tg = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
+                    ec_val = float(item.get('EC yêu cầu', 0)) / 100.0
+                    lich_su_ec_yc.append({'Thoi_gian': tg, 'EC_YC': ec_val})
+                except ValueError:
+                    pass
         lich_su_ec_yc.sort(key=lambda x: x['Thoi_gian'])
 
-        # Bước 2: Đọc file Tưới
-        with open(file_tuoi, 'r', encoding='utf-8') as f_tuoi:
-            data_tuoi = json.load(f_tuoi)
-
+        # Bước 2: Lọc dữ liệu Tưới
         du_lieu_da_loc = []
         for item in data_tuoi:
             if str(item.get('STT')) == stt and item.get('Thời gian'):
@@ -156,7 +149,6 @@ def process_data(stt, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max):
                 ec_tt_tb = thong_ke_ngay[ngay]['Tong_EC_TT'] / so_lan
                 ph_tb = thong_ke_ngay[ngay]['Tong_pH'] / so_lan
 
-                # Chia Giai Đoạn
                 if goc_ec_tt is None: goc_ec_tt = ec_tt_tb
                 elif abs(ec_tt_tb - goc_ec_tt) > ss_ec_tt:
                     gd_ec_tt += 1; goc_ec_tt = ec_tt_tb
@@ -197,74 +189,86 @@ def process_data(stt, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max):
         return None, f"❌ Lỗi xử lý dữ liệu: {e}"
 
 # ==========================================
-# 📊 HIỂN THỊ LÊN GIAO DIỆN
+# 📊 QUẢN LÝ LUỒNG CHẠY & HIỂN THỊ
 # ==========================================
-with st.spinner('Đang phân tích dữ liệu...'):
-    ket_qua, thong_bao = process_data(
-        STT_CAN_TIM, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
-        GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA
-    )
-
-if ket_qua is None:
-    st.error(thong_bao)
+# Yêu cầu phải upload đủ 2 file mới chạy
+if file_tuoi_upload is None or file_cham_phan_upload is None:
+    st.info("👈 Vui lòng tải lên cả 2 file JSON ở thanh bên trái để bắt đầu phân tích dữ liệu.")
 else:
-    st.success(f"Phân tích hoàn tất cho STT = {STT_CAN_TIM}!")
-    
-    for idx, mua_vu in enumerate(ket_qua):
-        st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
-        st.caption(f"Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
+    # Đọc dữ liệu từ file upload
+    try:
+        raw_data_tuoi = json.load(file_tuoi_upload)
+        raw_data_cp = json.load(file_cham_phan_upload)
         
-        df = mua_vu['data']
-        
-        # --- MENU XỔ XUỐNG CHỌN TIÊU CHÍ BIỂU ĐỒ ---
-        tieuchi_mapping = {
-            "⏱️ Tổng Thời Gian Tưới / Ngày (Phút)": "Tổng_TG_Phút",
-            "🎯 EC Yêu Cầu (Trung bình)": "EC_Yêu_Cầu",
-            "🧪 EC Thực Tế (Trung bình)": "EC_Thực_Tế",
-            "⚗️ pH (Trung bình)": "pH_TB",
-            "💧 Số lần tưới / Ngày": "Số Lần"
-        }
-        
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.markdown("<br>", unsafe_allow_html=True)
-            tieuchi_chon = st.selectbox(
-                f"📊 Chọn tiêu chí biểu đồ (Mùa vụ {idx + 1}):", 
-                list(tieuchi_mapping.keys()),
-                key=f"selectbox_{idx}"
+        with st.spinner('Đang phân tích dữ liệu...'):
+            ket_qua, thong_bao = process_data(
+                STT_CAN_TIM, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
+                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, 
+                raw_data_tuoi, raw_data_cp # Truyền trực tiếp data vào hàm
             )
-        
-        # --- VẼ BIỂU ĐỒ BẰNG PLOTLY ---
-        cot_du_lieu = tieuchi_mapping[tieuchi_chon]
-        fig = px.bar(
-            df, 
-            x="Ngày_Str", 
-            y=cot_du_lieu, 
-            text=cot_du_lieu,
-            title=f"Biểu đồ {tieuchi_chon.split('(')[0].strip()}",
-            labels={"Ngày_Str": "Ngày", cot_du_lieu: "Giá trị"},
-            color_discrete_sequence=['#2ecc71'] if "TG" in cot_du_lieu else ['#3498db']
-        )
-        fig.update_traces(textposition='outside')
-        fig.update_layout(xaxis_tickangle=-45)
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # --- HIỂN THỊ BẢNG SỐ LIỆU ---
-        st.markdown("#### 📋 Bảng Dữ Liệu Chi Tiết")
-        
-        # Format lại tên cột cho đẹp
-        df_display = df.rename(columns={
-            "Ngày_Str": "📅 Ngày",
-            "GĐ_EC_Thực": "🏷️ GĐ(EC.Thực)",
-            "GĐ_EC_YC": "🏷️ GĐ(EC.YC)",
-            "GĐ_Tưới": "🏷️ GĐ(Tưới)",
-            "Số Lần": "💧 Số Lần",
-            "Tổng_TG_Phút": "⏱️ Tổng TG (Ph)",
-            "EC_Yêu_Cầu": "🎯 EC Y.Cầu",
-            "EC_Thực_Tế": "🧪 EC T.Tế",
-            "pH_TB": "⚗️ pH TB"
-        }).drop(columns=["Ngày"])
-        
-        st.dataframe(df_display, use_container_width=True)
-        st.divider()
+
+        if ket_qua is None:
+            st.error(thong_bao)
+        else:
+            st.success(f"Phân tích hoàn tất cho STT = {STT_CAN_TIM}!")
+            
+            for idx, mua_vu in enumerate(ket_qua):
+                st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
+                st.caption(f"Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
+                
+                df = mua_vu['data']
+                
+                # --- MENU XỔ XUỐNG CHỌN TIÊU CHÍ BIỂU ĐỒ ---
+                tieuchi_mapping = {
+                    "⏱️ Tổng Thời Gian Tưới / Ngày (Phút)": "Tổng_TG_Phút",
+                    "🎯 EC Yêu Cầu (Trung bình)": "EC_Yêu_Cầu",
+                    "🧪 EC Thực Tế (Trung bình)": "EC_Thực_Tế",
+                    "⚗️ pH (Trung bình)": "pH_TB",
+                    "💧 Số lần tưới / Ngày": "Số Lần"
+                }
+                
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    tieuchi_chon = st.selectbox(
+                        f"📊 Chọn tiêu chí biểu đồ (Mùa vụ {idx + 1}):", 
+                        list(tieuchi_mapping.keys()),
+                        key=f"selectbox_{idx}"
+                    )
+                
+                # --- VẼ BIỂU ĐỒ BẰNG PLOTLY ---
+                cot_du_lieu = tieuchi_mapping[tieuchi_chon]
+                fig = px.bar(
+                    df, 
+                    x="Ngày_Str", 
+                    y=cot_du_lieu, 
+                    text=cot_du_lieu,
+                    title=f"Biểu đồ {tieuchi_chon.split('(')[0].strip()}",
+                    labels={"Ngày_Str": "Ngày", cot_du_lieu: "Giá trị"},
+                    color_discrete_sequence=['#2ecc71'] if "TG" in cot_du_lieu else ['#3498db']
+                )
+                fig.update_traces(textposition='outside')
+                fig.update_layout(xaxis_tickangle=-45)
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # --- HIỂN THỊ BẢNG SỐ LIỆU ---
+                st.markdown("#### 📋 Bảng Dữ Liệu Chi Tiết")
+                
+                df_display = df.rename(columns={
+                    "Ngày_Str": "📅 Ngày",
+                    "GĐ_EC_Thực": "🏷️ GĐ(EC.Thực)",
+                    "GĐ_EC_YC": "🏷️ GĐ(EC.YC)",
+                    "GĐ_Tưới": "🏷️ GĐ(Tưới)",
+                    "Số Lần": "💧 Số Lần",
+                    "Tổng_TG_Phút": "⏱️ Tổng TG (Ph)",
+                    "EC_Yêu_Cầu": "🎯 EC Y.Cầu",
+                    "EC_Thực_Tế": "🧪 EC T.Tế",
+                    "pH_TB": "⚗️ pH TB"
+                }).drop(columns=["Ngày"])
+                
+                st.dataframe(df_display, use_container_width=True)
+                st.divider()
+
+    except json.JSONDecodeError:
+        st.error("❌ Lỗi định dạng file! Vui lòng đảm bảo bạn đã tải lên đúng file .json.")
