@@ -24,7 +24,6 @@ st.sidebar.header("⚙️ Cấu hình thông số")
 STT_CAN_TIM = st.sidebar.text_input("STT Cần Phân Tích", value="4")
 
 st.sidebar.subheader("Ngưỡng phân chia Giai đoạn")
-# Thêm ô setting "Số ngày ổn định" để chống nhiễu 1 ngày
 SO_NGAY_ON_DINH = st.sidebar.number_input("⏳ Số ngày ổn định (Chống nhiễu)", value=2, step=1, min_value=1, help="Số ngày liên tiếp có giá trị same same nhau để được công nhận là một Giai đoạn mới.")
 
 SAI_SO_EC_TT = st.sidebar.number_input("1. Sai số EC Thực Tế", value=0.20, step=0.05)
@@ -50,7 +49,6 @@ def lay_ec_yeu_cau_tai_thoi_diem(tg_tuoi, lich_su_ec):
     return ec_hien_tai
 
 def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
-    """Thuật toán xét tính ổn định liên tiếp để chia giai đoạn"""
     stages = {}
     gd_current = 1
     goc_val = None
@@ -59,39 +57,31 @@ def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
     for i, ngay in enumerate(danh_sach_ngay):
         val = values[i]
         
-        # Ngày đầu tiên khởi tạo gốc
         if goc_val is None:
             goc_val = val
             stages[ngay] = gd_current
             continue
             
-        # Nếu lệch khỏi gốc hiện tại vượt ngưỡng sai số
         if abs(val - goc_val) >= sai_so:
             buffer.append({'ngay': ngay, 'val': val})
             
-            # Đủ số ngày liên tiếp bị lệch
             if len(buffer) >= so_ngay_on_dinh:
                 buf_vals = [x['val'] for x in buffer]
-                # Kiểm tra các ngày lệch này có "same same" với nhau không (độ chênh lệch giữa chúng <= sai_so)
                 if max(buf_vals) - min(buf_vals) <= sai_so:
-                    # Chính thức xác nhận tạo Giai đoạn mới!
                     gd_current += 1
-                    goc_val = sum(buf_vals) / len(buf_vals) # Gốc mới là trung bình của đợt ổn định này
+                    goc_val = sum(buf_vals) / len(buf_vals) 
                     for item in buffer:
                         stages[item['ngay']] = gd_current
                     buffer = []
                 else:
-                    # Dữ liệu dao động lung tung, không tạo thành trend. Đẩy ngày cũ nhất ra, coi như nhiễu.
                     oldest = buffer.pop(0)
                     stages[oldest['ngay']] = gd_current
         else:
-            # Dữ liệu đã quay lại mức bình thường, các cảnh báo trước đó là nhiễu ảo -> Xoá sổ
             for item in buffer:
                 stages[item['ngay']] = gd_current
             buffer = []
             stages[ngay] = gd_current
             
-    # Xử lý nốt các ngày còn kẹt trong buffer cuối vụ
     for item in buffer:
         stages[item['ngay']] = gd_current
         
@@ -165,12 +155,10 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
 
             danh_sach_ngay = sorted(thong_ke.keys())
             
-            # Tính toán mảng dữ liệu trung bình ngày
             ec_tt_vals = [thong_ke[n]['Tong_EC_TT'] / thong_ke[n]['So_lan'] for n in danh_sach_ngay]
             ec_yc_vals = [thong_ke[n]['Tong_EC_YC'] / thong_ke[n]['So_lan'] for n in danh_sach_ngay]
             tong_phut_vals = [thong_ke[n]['Tong_giay'] / 60 for n in danh_sach_ngay]
             
-            # 👉 ÁP DỤNG THUẬT TOÁN CHỐNG NHIỄU, TÍNH GIAI ĐOẠN 👈
             stages_ec_tt = phan_tich_giai_doan_array(danh_sach_ngay, ec_tt_vals, ss_ec_tt, so_ngay_on_dinh)
             stages_ec_yc = phan_tich_giai_doan_array(danh_sach_ngay, ec_yc_vals, ss_ec_yc, so_ngay_on_dinh)
             stages_tuoi = phan_tich_giai_doan_array(danh_sach_ngay, tong_phut_vals, ss_tong_phut, so_ngay_on_dinh)
@@ -217,7 +205,10 @@ else:
             st.success(f"Phân tích hoàn tất cho STT = {STT_CAN_TIM}!")
             for idx, mua_vu in enumerate(ket_qua):
                 st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
-                st.caption(f"Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
+                
+                # SỬA LỖI 1: Tính toán thêm tổng số ngày của mùa vụ
+                so_ngay_mua_vu = (mua_vu['ngay_ket_thuc'] - mua_vu['ngay_bat_dau']).days + 1
+                st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
                 
                 df = mua_vu['data']
                 
@@ -245,37 +236,34 @@ else:
                 fig.update_layout(xaxis_tickangle=-45, yaxis=dict(range=[0, df[cot_du_lieu].max() * 1.2])) 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # --- PHẦN CODE NÂNG CẤP XEM CHI TIẾT GIAI ĐOẠN ---
                 st.markdown("---")
                 st.markdown(f"#### 🔍 Chi Tiết Theo {cot_giai_doan.replace('_', ' ')}")
                 
-                # 1. Lấy danh sách các giai đoạn duy nhất hiện có và sắp xếp theo số (GĐ 1, GĐ 2...)
                 danh_sach_gd = df[cot_giai_doan].unique().tolist()
-                danh_sach_gd.sort(key=lambda x: int(x.replace('GĐ ', ''))) # Sắp xếp chuẩn số học
+                danh_sach_gd.sort(key=lambda x: int(x.replace('GĐ ', ''))) 
                 danh_sach_chon = ["Tất cả các Giai đoạn"] + danh_sach_gd
                 
-                # 2. Tạo cửa sổ xổ xuống (Selectbox) để chọn Giai đoạn
                 gd_chon = st.selectbox(
                     "👉 Chọn Giai đoạn để xem chi tiết:", 
                     danh_sach_chon, 
                     key=f"select_gd_{idx}"
                 )
                 
-                # 3. Lọc dữ liệu theo Giai đoạn đã chọn
                 if gd_chon == "Tất cả các Giai đoạn":
                     df_filtered = df
                 else:
                     df_filtered = df[df[cot_giai_doan] == gd_chon]
                     
-                    # Hiện thống kê tóm tắt với 6 cột bao gồm cả EC Thực Tế và pH
                     st.info(f"**📊 Thống kê tóm tắt cho {gd_chon}:**")
-                    col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
+                    
+                    # SỬA LỖI 2: Chia lại tỉ lệ các cột (cột 1 rộng gấp đôi cột 2) để chống tràn chữ
+                    col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns([2, 1, 1.2, 1.2, 1.2, 1])
                     
                     ngay_dau = df_filtered['Ngày_Str'].iloc[0]
                     ngay_cuoi = df_filtered['Ngày_Str'].iloc[-1]
                     so_ngay = len(df_filtered)
                     
-                    col_m1.metric("Thời gian", f"{ngay_dau} ➡️ {ngay_cuoi}")
+                    col_m1.metric("Thời gian", f"{ngay_dau} - {ngay_cuoi}")
                     col_m2.metric("Kéo dài", f"{so_ngay} ngày")
                     col_m3.metric("EC Yêu Cầu (TB)", f"{round(df_filtered['EC_Yêu_Cầu'].mean(), 2)}")
                     col_m4.metric("EC Thực Tế (TB)", f"{round(df_filtered['EC_Thực_Tế'].mean(), 2)}")
@@ -283,7 +271,6 @@ else:
                     col_m6.metric("pH (TB)", f"{round(df_filtered['pH_TB'].mean(), 2)}")
                     st.markdown("<br>", unsafe_allow_html=True)
 
-                # 4. Hiển thị bảng dữ liệu đã lọc
                 st.markdown("#### 📋 Bảng Dữ Liệu")
                 df_display = df_filtered.rename(columns={
                     "Ngày_Str": "📅 Ngày", "GĐ_EC_Thực": "🏷️ GĐ(EC.Thực)", "GĐ_EC_YC": "🏷️ GĐ(EC.YC)",
