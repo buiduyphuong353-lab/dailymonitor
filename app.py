@@ -267,9 +267,9 @@ else:
                 else:
                     df_filtered = df[df[cot_giai_doan] == gd_chon]
                     
-                    # Hiện thống kê tóm tắt
+                    # Hiện thống kê tóm tắt với 6 cột bao gồm cả EC Thực Tế và pH
                     st.info(f"**📊 Thống kê tóm tắt cho {gd_chon}:**")
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
                     
                     ngay_dau = df_filtered['Ngày_Str'].iloc[0]
                     ngay_cuoi = df_filtered['Ngày_Str'].iloc[-1]
@@ -277,8 +277,10 @@ else:
                     
                     col_m1.metric("Thời gian", f"{ngay_dau} ➡️ {ngay_cuoi}")
                     col_m2.metric("Kéo dài", f"{so_ngay} ngày")
-                    col_m3.metric("EC Yêu Cầu (Trung bình)", f"{round(df_filtered['EC_Yêu_Cầu'].mean(), 2)}")
-                    col_m4.metric("Thời gian tưới (Trung bình)", f"{round(df_filtered['Tổng_TG_Phút'].mean(), 2)} phút")
+                    col_m3.metric("EC Yêu Cầu (TB)", f"{round(df_filtered['EC_Yêu_Cầu'].mean(), 2)}")
+                    col_m4.metric("EC Thực Tế (TB)", f"{round(df_filtered['EC_Thực_Tế'].mean(), 2)}")
+                    col_m5.metric("TG Tưới (TB)", f"{round(df_filtered['Tổng_TG_Phút'].mean(), 2)} phút")
+                    col_m6.metric("pH (TB)", f"{round(df_filtered['pH_TB'].mean(), 2)}")
                     st.markdown("<br>", unsafe_allow_html=True)
 
                 # 4. Hiển thị bảng dữ liệu đã lọc
