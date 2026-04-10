@@ -14,8 +14,27 @@ st.title("🌱 Dashboard Phân Tích Giai Đoạn Tưới Nhỏ Giọt")
 # ⚙️ GIAO DIỆN CÀI ĐẶT (SIDEBAR)
 # ==========================================
 st.sidebar.header("📁 Tải Dữ Liệu Lên")
-file_tuoi_upload = st.sidebar.file_uploader("1. Tải file Lịch nhỏ giọt (.json)", type=['json'])
-file_cham_phan_upload = st.sidebar.file_uploader("2. Tải file Châm phân (.json)", type=['json'])
+
+# 1. Tải nhiều file Tưới & Tạo Checkbox
+file_tuoi_uploads = st.sidebar.file_uploader("1. Tải các file Lịch nhỏ giọt (.json)", type=['json'], accept_multiple_files=True)
+selected_tuoi_files = []
+if file_tuoi_uploads:
+    st.sidebar.markdown("**👉 Chọn file Lịch nhỏ giọt cần đọc:**")
+    for f in file_tuoi_uploads:
+        # Tạo checkbox cho từng file, mặc định là được tích (value=True)
+        if st.sidebar.checkbox(f"📄 {f.name}", value=True, key=f"tuoi_{f.name}"):
+            selected_tuoi_files.append(f)
+
+# 2. Tải nhiều file Châm phân & Tạo Checkbox
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+file_cham_phan_uploads = st.sidebar.file_uploader("2. Tải các file Châm phân (.json)", type=['json'], accept_multiple_files=True)
+selected_cp_files = []
+if file_cham_phan_uploads:
+    st.sidebar.markdown("**👉 Chọn file Châm phân cần đọc:**")
+    for f in file_cham_phan_uploads:
+        # Tạo checkbox cho từng file, mặc định là được tích
+        if st.sidebar.checkbox(f"📄 {f.name}", value=True, key=f"cp_{f.name}"):
+            selected_cp_files.append(f)
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Cấu hình thông số")
@@ -162,7 +181,6 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             stages_ec_yc = phan_tich_giai_doan_array(danh_sach_ngay, ec_yc_vals, ss_ec_yc, so_ngay_on_dinh)
             stages_tuoi = phan_tich_giai_doan_array(danh_sach_ngay, tong_phut_vals, ss_tong_phut, so_ngay_on_dinh)
 
-            # KHÔNG DÙNG PANDAS DATAFRAME NỮA, DÙNG LIST DICT THUẦN
             bang_bao_cao_ngay = []
             for i, ngay in enumerate(danh_sach_ngay):
                 bang_bao_cao_ngay.append({
@@ -185,14 +203,32 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
 # ==========================================
 # 📊 QUẢN LÝ LUỒNG CHẠY & HIỂN THỊ
 # ==========================================
-if file_tuoi_upload is None or file_cham_phan_upload is None:
-    st.info("👈 Vui lòng tải lên cả 2 file JSON ở thanh bên trái để bắt đầu phân tích dữ liệu.")
+if not selected_tuoi_files or not selected_cp_files:
+    st.info("👈 Vui lòng tải lên và TÍCH CHỌN ít nhất 1 file Lịch nhỏ giọt và 1 file Châm phân ở thanh bên trái để bắt đầu.")
 else:
     try:
-        raw_data_tuoi = json.load(file_tuoi_upload)
-        raw_data_cp = json.load(file_cham_phan_upload)
+        raw_data_tuoi = []
+        raw_data_cp = []
         
-        with st.spinner('Đang phân tích dữ liệu...'):
+        # Gộp tất cả dữ liệu từ các file Lịch nhỏ giọt ĐƯỢC TÍCH
+        for f in selected_tuoi_files:
+            f.seek(0) # Đặt lại con trỏ file trước khi đọc
+            data = json.load(f)
+            if isinstance(data, list):
+                raw_data_tuoi.extend(data)
+            else:
+                raw_data_tuoi.append(data)
+                
+        # Gộp tất cả dữ liệu từ các file Châm phân ĐƯỢC TÍCH
+        for f in selected_cp_files:
+            f.seek(0)
+            data = json.load(f)
+            if isinstance(data, list):
+                raw_data_cp.extend(data)
+            else:
+                raw_data_cp.append(data)
+        
+        with st.spinner('Đang gộp file và phân tích dữ liệu...'):
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
                 GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, raw_data_tuoi, raw_data_cp 
@@ -201,14 +237,13 @@ else:
         if ket_qua is None:
             st.error(thong_bao)
         else:
-            st.success(f"Phân tích hoàn tất cho STT = {STT_CAN_TIM}!")
+            st.success(f"Đã gộp {len(selected_tuoi_files)} file Tưới & {len(selected_cp_files)} file Châm phân. Phân tích hoàn tất cho STT = {STT_CAN_TIM}!")
             for idx, mua_vu in enumerate(ket_qua):
                 st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
                 
                 so_ngay_mua_vu = (mua_vu['ngay_ket_thuc'] - mua_vu['ngay_bat_dau']).days + 1
                 st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
                 
-                # Biến data lúc này là một List chứa các Dictionary (thay vì DataFrame)
                 data_mua_vu = mua_vu['data'] 
                 
                 tieuchi_mapping = {
@@ -225,7 +260,6 @@ else:
                 cot_du_lieu = tieuchi_mapping[tieuchi_chon]["cot_gia_tri"]
                 cot_giai_doan = tieuchi_mapping[tieuchi_chon]["cot_giai_doan"]
                 
-                # Tìm giá trị lớn nhất trong mảng bằng kỹ thuật List Comprehension thay vì .max() của pandas
                 max_y = max([row[cot_du_lieu] for row in data_mua_vu]) * 1.2 if data_mua_vu else 1
 
                 fig = px.bar(
@@ -241,7 +275,6 @@ else:
                 st.markdown("---")
                 st.markdown(f"#### 🔍 Chi Tiết Theo {cot_giai_doan.replace('_', ' ')}")
                 
-                # Trích xuất danh sách các Giai đoạn không trùng lặp (Dùng hàm set trong Python thuần)
                 danh_sach_gd = list(set([row[cot_giai_doan] for row in data_mua_vu]))
                 danh_sach_gd.sort(key=lambda x: int(x.replace('GĐ ', ''))) 
                 danh_sach_chon = ["Tất cả các Giai đoạn"] + danh_sach_gd
@@ -252,13 +285,12 @@ else:
                     key=f"select_gd_{idx}"
                 )
                 
-                # Lọc dữ liệu bằng List Comprehension thay vì mask của pandas
                 if gd_chon == "Tất cả các Giai đoạn":
                     data_filtered = data_mua_vu
                 else:
                     data_filtered = [row for row in data_mua_vu if row[cot_giai_doan] == gd_chon]
                     
-                    if data_filtered: # Đảm bảo có dữ liệu
+                    if data_filtered:
                         st.info(f"**📊 Thống kê tóm tắt cho {gd_chon}:**")
                         col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns([2, 1, 1.2, 1.2, 1.2, 1])
                         
@@ -266,7 +298,6 @@ else:
                         ngay_cuoi = data_filtered[-1]['Ngày_Str']
                         so_ngay = len(data_filtered)
                         
-                        # Tính trung bình thủ công: Sum / Chiều dài
                         tb_ec_yc = sum(row['EC_Yêu_Cầu'] for row in data_filtered) / so_ngay
                         tb_ec_tt = sum(row['EC_Thực_Tế'] for row in data_filtered) / so_ngay
                         tb_tg = sum(row['Tổng_TG_Phút'] for row in data_filtered) / so_ngay
@@ -282,7 +313,6 @@ else:
 
                 st.markdown("#### 📋 Bảng Dữ Liệu")
                 
-                # Tạo bảng dữ liệu hiển thị (Mapping lại tên cột giống rename của pandas)
                 data_display = []
                 for row in data_filtered:
                     data_display.append({
@@ -297,9 +327,8 @@ else:
                         "⚗️ pH TB": row["pH_TB"]
                     })
                 
-                # Streamlit hỗ trợ truyền trực tiếp List[Dict] vào st.dataframe rất tốt
                 st.dataframe(data_display, use_container_width=True)
                 st.divider()
 
     except json.JSONDecodeError:
-        st.error("❌ Lỗi định dạng file! Vui lòng đảm bảo bạn đã tải lên đúng file .json.")
+        st.error("❌ Lỗi định dạng file! Vui lòng đảm bảo bạn đã tải lên đúng file .json hợp lệ.")
