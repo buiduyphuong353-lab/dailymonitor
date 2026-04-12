@@ -21,7 +21,6 @@ selected_tuoi_files = []
 if file_tuoi_uploads:
     st.sidebar.markdown("**👉 Chọn file Lịch nhỏ giọt cần đọc:**")
     for f in file_tuoi_uploads:
-        # Tạo checkbox cho từng file, mặc định là được tích (value=True)
         if st.sidebar.checkbox(f"📄 {f.name}", value=True, key=f"tuoi_{f.name}"):
             selected_tuoi_files.append(f)
 
@@ -32,7 +31,6 @@ selected_cp_files = []
 if file_cham_phan_uploads:
     st.sidebar.markdown("**👉 Chọn file Châm phân cần đọc:**")
     for f in file_cham_phan_uploads:
-        # Tạo checkbox cho từng file, mặc định là được tích
         if st.sidebar.checkbox(f"📄 {f.name}", value=True, key=f"cp_{f.name}"):
             selected_cp_files.append(f)
 
@@ -212,7 +210,7 @@ else:
         
         # Gộp tất cả dữ liệu từ các file Lịch nhỏ giọt ĐƯỢC TÍCH
         for f in selected_tuoi_files:
-            f.seek(0) # Đặt lại con trỏ file trước khi đọc
+            f.seek(0)
             data = json.load(f)
             if isinstance(data, list):
                 raw_data_tuoi.extend(data)
@@ -238,13 +236,48 @@ else:
             st.error(thong_bao)
         else:
             st.success(f"Đã gộp {len(selected_tuoi_files)} file Tưới & {len(selected_cp_files)} file Châm phân. Phân tích hoàn tất cho STT = {STT_CAN_TIM}!")
+            
             for idx, mua_vu in enumerate(ket_qua):
                 st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
                 
-                so_ngay_mua_vu = (mua_vu['ngay_ket_thuc'] - mua_vu['ngay_bat_dau']).days + 1
-                st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
+                # Tính toán ngày gốc của toàn mùa vụ
+                ngay_bat_dau_goc = mua_vu['ngay_bat_dau'].date()
+                ngay_ket_thuc_goc = mua_vu['ngay_ket_thuc'].date()
+                so_ngay_mua_vu = (ngay_ket_thuc_goc - ngay_bat_dau_goc).days + 1
                 
-                data_mua_vu = mua_vu['data'] 
+                st.caption(f"🗓️ Dữ liệu gốc: Từ **{ngay_bat_dau_goc.strftime('%d/%m/%Y')}** đến **{ngay_ket_thuc_goc.strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Tổng cữ tưới: **{mua_vu['tong_lan_tuoi']}** lần")
+                
+                # --- CHỨC NĂNG LỌC THEO KHOẢNG THỜI GIAN ---
+                col_d1, col_d2 = st.columns([1, 2])
+                with col_d1:
+                    date_range = st.date_input(
+                        "📅 **Chọn khoảng thời gian để phân tích:**",
+                        value=(ngay_bat_dau_goc, ngay_ket_thuc_goc),
+                        min_value=ngay_bat_dau_goc,
+                        max_value=ngay_ket_thuc_goc,
+                        key=f"date_filter_{idx}"
+                    )
+                
+                # Xử lý input từ user (có thể họ mới chọn 1 ngày đầu tiên)
+                if len(date_range) == 2:
+                    start_date, end_date = date_range
+                else:
+                    start_date = date_range[0]
+                    end_date = ngay_ket_thuc_goc # Mặc định lấy đến ngày cuối nếu chưa chọn mốc sau
+                
+                # Lọc dữ liệu dựa trên khoảng thời gian
+                data_mua_vu = []
+                for row in mua_vu['data']:
+                    row_date = datetime.strptime(row["Ngày_Str"], "%d/%m/%Y").date()
+                    if start_date <= row_date <= end_date:
+                        data_mua_vu.append(row)
+                
+                # Nếu không có dữ liệu trong khoảng thời gian đã chọn
+                if not data_mua_vu:
+                    st.warning("⚠️ Không có dữ liệu trong khoảng thời gian bạn đã chọn.")
+                    st.divider()
+                    continue
+                # -------------------------------------------
                 
                 tieuchi_mapping = {
                     "🎯 EC Yêu Cầu (Trung bình)": {"cot_gia_tri": "EC_Yêu_Cầu", "cot_giai_doan": "GĐ_EC_YC"},
@@ -255,7 +288,7 @@ else:
                 col1, col2 = st.columns([1, 2])
                 with col1:
                     st.markdown("<br>", unsafe_allow_html=True)
-                    tieuchi_chon = st.selectbox(f"📊 Chọn tiêu chí biểu đồ (Mùa vụ {idx + 1}):", list(tieuchi_mapping.keys()), key=f"selectbox_{idx}")
+                    tieuchi_chon = st.selectbox(f"📊 Chọn tiêu chí biểu đồ:", list(tieuchi_mapping.keys()), key=f"selectbox_{idx}")
                 
                 cot_du_lieu = tieuchi_mapping[tieuchi_chon]["cot_gia_tri"]
                 cot_giai_doan = tieuchi_mapping[tieuchi_chon]["cot_giai_doan"]
