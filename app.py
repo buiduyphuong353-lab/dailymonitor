@@ -247,23 +247,25 @@ else:
                 
                 st.caption(f"🗓️ Dữ liệu gốc: Từ **{ngay_bat_dau_goc.strftime('%d/%m/%Y')}** đến **{ngay_ket_thuc_goc.strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Tổng cữ tưới: **{mua_vu['tong_lan_tuoi']}** lần")
                 
-                # --- CHỨC NĂNG LỌC THEO KHOẢNG THỜI GIAN ---
-                col_d1, col_d2 = st.columns([1, 2])
+                # --- CHỨC NĂNG LỌC BẰNG 2 Ô TỪ NGÀY / ĐẾN NGÀY RIÊNG BIỆT ---
+                st.markdown("**📅 Chọn khoảng thời gian để phân tích:**")
+                col_d1, col_d2, col_d3 = st.columns([1, 1, 2]) # Tạo 3 cột, để 2 cột đầu ngắn, cột cuối rỗng cho đẹp
                 with col_d1:
-                    date_range = st.date_input(
-                        "📅 **Chọn khoảng thời gian để phân tích:**",
-                        value=(ngay_bat_dau_goc, ngay_ket_thuc_goc),
+                    start_date = st.date_input(
+                        "Từ ngày:",
+                        value=ngay_bat_dau_goc,
                         min_value=ngay_bat_dau_goc,
                         max_value=ngay_ket_thuc_goc,
-                        key=f"date_filter_{idx}"
+                        key=f"start_date_{idx}"
                     )
-                
-                # Xử lý input từ user (có thể họ mới chọn 1 ngày đầu tiên)
-                if len(date_range) == 2:
-                    start_date, end_date = date_range
-                else:
-                    start_date = date_range[0]
-                    end_date = ngay_ket_thuc_goc # Mặc định lấy đến ngày cuối nếu chưa chọn mốc sau
+                with col_d2:
+                    end_date = st.date_input(
+                        "Đến ngày:",
+                        value=ngay_ket_thuc_goc,
+                        min_value=start_date, # Bắt buộc Đến ngày phải lớn hơn hoặc bằng Từ ngày
+                        max_value=ngay_ket_thuc_goc,
+                        key=f"end_date_{idx}"
+                    )
                 
                 # Lọc dữ liệu dựa trên khoảng thời gian
                 data_mua_vu = []
