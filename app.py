@@ -221,7 +221,7 @@ try:
             # --- Hiển thị Bảng Dữ Liệu bằng Code Python Phổ Thông (print + f-string) ---
             display(Markdown("### 📋 Bảng Dữ Liệu Chi Tiết"))
             
-            # In Tiêu đề cột
+            # In Tiêu đề cột 
             print(f"{'Ngày':<12} | {'GĐ(EC.Thực)':<12} | {'GĐ(EC.YC)':<10} | {'GĐ(Tưới)':<10} | {'Số Lần':<8} | {'Tổng TG(Ph)':<12} | {'EC Y.Cầu':<10} | {'EC T.Tế':<10} | {'pH TB':<8}")
             print("-" * 105)
             
