@@ -40,7 +40,6 @@ st.sidebar.header("⚙️ Cấu hình thông số")
 STT_CAN_TIM = st.sidebar.text_input("STT Cần Phân Tích", value="4")
 
 st.sidebar.subheader("Cắt Mùa Vụ")
-# THÊM TÙY CHỌN KẾT HỢP
 TIEU_CHI_MUA_VU = st.sidebar.radio("Tiêu chí xác định Mùa vụ mới:", [
     "🌟 Kết hợp cả 2 (Khuyên dùng)", 
     "⏳ Theo thời gian nghỉ tưới", 
@@ -59,7 +58,9 @@ st.sidebar.subheader("Ngưỡng lọc dữ liệu")
 GIAY_TUOI_TOI_THIEU = st.sidebar.number_input("Giây tưới tối thiểu", value=20)
 GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa (Lọc lỗi)", value=3600)
 SO_NGAY_TOI_THIEU = 7
-SO_LAN_TUOI_TOI_THIEU = st.sidebar.number_input("Số cữ tưới tối thiểu/Vụ", value=10, step=1, help="Loại bỏ các mùa vụ rác (chạy test, bảo trì) có quá ít cữ tưới.")
+SO_LAN_TUOI_TOI_THIEU = st.sidebar.number_input("Số cữ tưới tối thiểu/Vụ", value=10, step=1, help="Loại bỏ các mùa vụ rác có quá ít cữ tưới.")
+# THÊM ĐIỀU KIỆN LỌC SỐ GIAI ĐOẠN
+SO_GIAI_DOAN_TOI_THIEU = st.sidebar.number_input("Số giai đoạn tối thiểu/Vụ", value=4, step=1, help="Chỉ ghi nhận những mùa vụ hoàn chỉnh trải qua đủ số giai đoạn (ví dụ >= 4 giai đoạn).")
 
 # ==========================================
 # 🧠 HÀM XỬ LÝ DỮ LIỆU CỐT LÕI
@@ -113,7 +114,8 @@ def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
     return stages
 
 @st.cache_data
-def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, tieu_chi_mua_vu, so_ngay_chuyen_vu, ec_nguong_chuyen_vu, so_lan_tuoi_min, data_tuoi, data_cp):
+# Đã thêm tham số so_gd_min vào hàm
+def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, tieu_chi_mua_vu, so_ngay_chuyen_vu, ec_nguong_chuyen_vu, so_lan_tuoi_min, so_gd_min, data_tuoi, data_cp):
     try:
         # 1. Trích xuất dữ liệu châm phân
         lich_su_ec_yc = []
@@ -147,7 +149,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
         if not du_lieu_da_loc: return None, f"❌ Không có dữ liệu hợp lệ cho STT {stt}."
         du_lieu_da_loc.sort(key=lambda x: x['Thời gian'])
 
-        # 3. Phân cắt Mùa vụ TỐI ƯU
+        # 3. Phân cắt Mùa vụ
         danh_sach_mua_vu = []
         mua_hien_tai = [du_lieu_da_loc[0]]
         dang_nghi_vu = (du_lieu_da_loc[0]['EC_Yeu_Cau'] <= ec_nguong_chuyen_vu)
@@ -157,25 +159,19 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             dong_truoc = du_lieu_da_loc[i-1]
             cat_vu = False
 
-            # Điều kiện 1: Thời gian nghỉ
             dk_thoi_gian = (dong['Thời gian'] - dong_truoc['Thời gian']) > timedelta(days=so_ngay_chuyen_vu)
             
-            # Điều kiện 2: Sự sụt giảm EC
             dk_ec = False
             if dong['EC_Yeu_Cau'] <= ec_nguong_chuyen_vu:
                 dang_nghi_vu = True
             else:
                 if dang_nghi_vu: 
-                    dk_ec = True # Vừa vượt ngưỡng trở lại -> Vụ mới
+                    dk_ec = True 
                     dang_nghi_vu = False
 
-            # Quyết định cắt vụ dựa theo lựa chọn trên thanh bên
-            if tieu_chi_mua_vu == "⏳ Theo thời gian nghỉ tưới":
-                cat_vu = dk_thoi_gian
-            elif tieu_chi_mua_vu == "🧪 Theo sự sụt giảm EC":
-                cat_vu = dk_ec
-            else: # Kết hợp cả 2
-                cat_vu = dk_thoi_gian or dk_ec
+            if tieu_chi_mua_vu == "⏳ Theo thời gian nghỉ tưới": cat_vu = dk_thoi_gian
+            elif tieu_chi_mua_vu == "🧪 Theo sự sụt giảm EC": cat_vu = dk_ec
+            else: cat_vu = dk_thoi_gian or dk_ec
             
             if cat_vu:
                 if mua_hien_tai: danh_sach_mua_vu.append(mua_hien_tai)
@@ -206,8 +202,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                         tong_lan += 1
                     tg_bat = None
 
-            if tong_lan < so_lan_tuoi_min:
-                continue
+            if tong_lan < so_lan_tuoi_min: continue
 
             thong_ke = {}
             for cu in cac_cu_tuoi:
@@ -228,6 +223,16 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             stages_ec_tt = phan_tich_giai_doan_array(danh_sach_ngay, ec_tt_vals, ss_ec_tt, so_ngay_on_dinh)
             stages_ec_yc = phan_tich_giai_doan_array(danh_sach_ngay, ec_yc_vals, ss_ec_yc, so_ngay_on_dinh)
             stages_tuoi = phan_tich_giai_doan_array(danh_sach_ngay, tong_phut_vals, ss_tong_phut, so_ngay_on_dinh)
+
+            # LỌC SỐ GIAI ĐOẠN: Xác định xem mùa vụ này đã đạt tới Giai đoạn số mấy (max)
+            max_gd_ec_tt = max(stages_ec_tt.values()) if stages_ec_tt else 0
+            max_gd_ec_yc = max(stages_ec_yc.values()) if stages_ec_yc else 0
+            max_gd_tuoi = max(stages_tuoi.values()) if stages_tuoi else 0
+            
+            # Nếu tất cả các tiêu chí đều không đạt tới số giai đoạn tối thiểu -> Bỏ qua mùa vụ này
+            max_gd_chung = max(max_gd_ec_tt, max_gd_ec_yc, max_gd_tuoi)
+            if max_gd_chung < so_gd_min:
+                continue
 
             bang_bao_cao_ngay = []
             for i, ngay in enumerate(danh_sach_ngay):
@@ -270,15 +275,16 @@ else:
             else: raw_data_cp.append(data)
         
         with st.spinner('Đang gộp file và phân tích dữ liệu...'):
+            # Đã cập nhật tham số SO_GIAI_DOAN_TOI_THIEU
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
-                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, TIEU_CHI_MUA_VU, SO_NGAY_CHUYEN_VU, EC_NGUONG_CHUYEN_VU, SO_LAN_TUOI_TOI_THIEU, raw_data_tuoi, raw_data_cp 
+                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, TIEU_CHI_MUA_VU, SO_NGAY_CHUYEN_VU, EC_NGUONG_CHUYEN_VU, SO_LAN_TUOI_TOI_THIEU, SO_GIAI_DOAN_TOI_THIEU, raw_data_tuoi, raw_data_cp 
             )
 
         if ket_qua is None:
             st.error(thong_bao)
         elif len(ket_qua) == 0:
-            st.warning("⚠️ Không tìm thấy mùa vụ nào đủ điều kiện để phân tích (thời gian hoặc số cữ tưới không đạt). Hãy kiểm tra lại cấu hình lọc ở thanh bên.")
+            st.warning("⚠️ Không tìm thấy mùa vụ nào đủ điều kiện để phân tích (thời gian, số cữ tưới hoặc số giai đoạn không đạt). Hãy kiểm tra lại cấu hình lọc ở thanh bên.")
         else:
             st.success(f"Đã xử lý xong! Cắt mùa vụ theo: {TIEU_CHI_MUA_VU}")
             
