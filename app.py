@@ -124,15 +124,22 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
         du_lieu_da_loc = []
         for item in data_tuoi:
             if str(item.get('STT')) == stt and item.get('Thời gian'):
-                tg_hien_tai = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
-                du_lieu_da_loc.append({
-                    'Thời gian': tg_hien_tai,
-                    'Trạng thái': str(item.get('Trạng thái', '')).strip(),
-                    'EC_Yeu_Cau': lay_ec_yeu_cau_tai_thoi_diem(tg_hien_tai, lich_su_ec_yc),
-                    'EC_Thuc_Te': float(item.get('TBEC', 0)) / 100.0
-                })
+                try:
+                    tg_hien_tai = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
+                    
+                    # CẬP NHẬT: Xử lý an toàn cho TBEC (chống lỗi khi chuỗi rỗng "")
+                    raw_tbec = str(item.get('TBEC', '0')).strip()
+                    tbec_val = float(raw_tbec) / 100.0 if raw_tbec else 0.0
 
-        if not du_lieu_da_loc: return None, f"❌ Không có dữ liệu cho STT {stt}."
+                    du_lieu_da_loc.append({
+                        'Thời gian': tg_hien_tai,
+                        'Trạng thái': str(item.get('Trạng thái', '')).strip(),
+                        'EC_Yeu_Cau': lay_ec_yeu_cau_tai_thoi_diem(tg_hien_tai, lich_su_ec_yc),
+                        'EC_Thuc_Te': tbec_val
+                    })
+                except ValueError: pass
+
+        if not du_lieu_da_loc: return None, f"❌ Không có dữ liệu hợp lệ cho STT {stt}."
         du_lieu_da_loc.sort(key=lambda x: x['Thời gian'])
 
         # 3. Phân cắt Mùa vụ theo tiêu chí được chọn
@@ -252,6 +259,8 @@ else:
 
         if ket_qua is None:
             st.error(thong_bao)
+        elif len(ket_qua) == 0:
+            st.warning("⚠️ Không tìm thấy mùa vụ nào đủ số ngày tối thiểu để phân tích. Hãy kiểm tra lại khoảng thời gian của dữ liệu hoặc điều kiện cắt mùa vụ.")
         else:
             st.success(f"Đã xử lý xong! Cắt mùa vụ theo: {TIEU_CHI_MUA_VU}")
             
