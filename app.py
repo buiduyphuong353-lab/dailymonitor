@@ -40,9 +40,14 @@ st.sidebar.header("⚙️ Cấu hình thông số")
 STT_CAN_TIM = st.sidebar.text_input("STT Cần Phân Tích", value="4")
 
 st.sidebar.subheader("Cắt Mùa Vụ")
-TIEU_CHI_MUA_VU = st.sidebar.radio("Tiêu chí xác định Mùa vụ mới:", ["⏳ Theo thời gian nghỉ tưới", "🧪 Theo sự sụt giảm EC"])
-SO_NGAY_CHUYEN_VU = st.sidebar.number_input("Số ngày nghỉ tối thiểu (Nếu chọn Thời gian)", value=2.0)
-EC_NGUONG_CHUYEN_VU = st.sidebar.number_input("Ngưỡng EC chuyển vụ (Nếu chọn EC)", value=0.5, step=0.1, help="Khi EC Yêu cầu tụt xuống dưới mức này, hệ thống sẽ hiểu là đang dọn vườn/rửa giá thể.")
+# THÊM TÙY CHỌN KẾT HỢP
+TIEU_CHI_MUA_VU = st.sidebar.radio("Tiêu chí xác định Mùa vụ mới:", [
+    "🌟 Kết hợp cả 2 (Khuyên dùng)", 
+    "⏳ Theo thời gian nghỉ tưới", 
+    "🧪 Theo sự sụt giảm EC"
+])
+SO_NGAY_CHUYEN_VU = st.sidebar.number_input("Số ngày nghỉ tối thiểu (Để cắt vụ)", value=2.0)
+EC_NGUONG_CHUYEN_VU = st.sidebar.number_input("Ngưỡng EC chuyển vụ (Để cắt vụ)", value=0.5, step=0.1, help="Khi EC Yêu cầu tụt xuống dưới mức này, hệ thống sẽ hiểu là đang dọn vườn/rửa giá thể.")
 
 st.sidebar.subheader("Ngưỡng phân chia Giai đoạn")
 SO_NGAY_ON_DINH = st.sidebar.number_input("⏳ Số ngày ổn định (Chống nhiễu)", value=2, step=1, min_value=1)
@@ -128,7 +133,6 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                 try:
                     tg_hien_tai = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
                     
-                    # Xử lý an toàn cho TBEC (chống lỗi khi chuỗi rỗng "")
                     raw_tbec = str(item.get('TBEC', '0')).strip()
                     tbec_val = float(raw_tbec) / 100.0 if raw_tbec else 0.0
 
@@ -143,7 +147,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
         if not du_lieu_da_loc: return None, f"❌ Không có dữ liệu hợp lệ cho STT {stt}."
         du_lieu_da_loc.sort(key=lambda x: x['Thời gian'])
 
-        # 3. Phân cắt Mùa vụ theo tiêu chí được chọn
+        # 3. Phân cắt Mùa vụ TỐI ƯU
         danh_sach_mua_vu = []
         mua_hien_tai = [du_lieu_da_loc[0]]
         dang_nghi_vu = (du_lieu_da_loc[0]['EC_Yeu_Cau'] <= ec_nguong_chuyen_vu)
@@ -153,16 +157,25 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             dong_truoc = du_lieu_da_loc[i-1]
             cat_vu = False
 
+            # Điều kiện 1: Thời gian nghỉ
+            dk_thoi_gian = (dong['Thời gian'] - dong_truoc['Thời gian']) > timedelta(days=so_ngay_chuyen_vu)
+            
+            # Điều kiện 2: Sự sụt giảm EC
+            dk_ec = False
+            if dong['EC_Yeu_Cau'] <= ec_nguong_chuyen_vu:
+                dang_nghi_vu = True
+            else:
+                if dang_nghi_vu: 
+                    dk_ec = True # Vừa vượt ngưỡng trở lại -> Vụ mới
+                    dang_nghi_vu = False
+
+            # Quyết định cắt vụ dựa theo lựa chọn trên thanh bên
             if tieu_chi_mua_vu == "⏳ Theo thời gian nghỉ tưới":
-                if (dong['Thời gian'] - dong_truoc['Thời gian']) > timedelta(days=so_ngay_chuyen_vu):
-                    cat_vu = True
-            else: # Theo sụt giảm EC
-                if dong['EC_Yeu_Cau'] <= ec_nguong_chuyen_vu:
-                    dang_nghi_vu = True
-                else:
-                    if dang_nghi_vu: 
-                        cat_vu = True # Vừa vượt ngưỡng trở lại -> Vụ mới
-                        dang_nghi_vu = False
+                cat_vu = dk_thoi_gian
+            elif tieu_chi_mua_vu == "🧪 Theo sự sụt giảm EC":
+                cat_vu = dk_ec
+            else: # Kết hợp cả 2
+                cat_vu = dk_thoi_gian or dk_ec
             
             if cat_vu:
                 if mua_hien_tai: danh_sach_mua_vu.append(mua_hien_tai)
@@ -178,7 +191,6 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             ngay_bat_dau = mua_vu[0]['Thời gian']
             ngay_ket_thuc = mua_vu[-1]['Thời gian']
             
-            # Lọc theo số ngày tối thiểu
             if (ngay_ket_thuc - ngay_bat_dau).days < SO_NGAY_TOI_THIEU: continue
 
             cac_cu_tuoi = []; tg_bat = None; tong_lan = 0
@@ -194,7 +206,6 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                         tong_lan += 1
                     tg_bat = None
 
-            # LỌC MÙA VỤ RÁC: Nếu tổng số cữ tưới nhỏ hơn cấu hình thì bỏ qua luôn mùa vụ này
             if tong_lan < so_lan_tuoi_min:
                 continue
 
@@ -259,7 +270,6 @@ else:
             else: raw_data_cp.append(data)
         
         with st.spinner('Đang gộp file và phân tích dữ liệu...'):
-            # Đã cập nhật truyền biến SO_LAN_TUOI_TOI_THIEU vào hàm process_data
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
                 GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, TIEU_CHI_MUA_VU, SO_NGAY_CHUYEN_VU, EC_NGUONG_CHUYEN_VU, SO_LAN_TUOI_TOI_THIEU, raw_data_tuoi, raw_data_cp 
