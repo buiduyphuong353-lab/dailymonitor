@@ -54,6 +54,7 @@ st.sidebar.subheader("Ngưỡng lọc dữ liệu")
 GIAY_TUOI_TOI_THIEU = st.sidebar.number_input("Giây tưới tối thiểu", value=20)
 GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa (Lọc lỗi)", value=3600)
 SO_NGAY_TOI_THIEU = 7
+SO_LAN_TUOI_TOI_THIEU = st.sidebar.number_input("Số cữ tưới tối thiểu/Vụ", value=10, step=1, help="Loại bỏ các mùa vụ rác (chạy test, bảo trì) có quá ít cữ tưới.")
 
 # ==========================================
 # 🧠 HÀM XỬ LÝ DỮ LIỆU CỐT LÕI
@@ -107,7 +108,7 @@ def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
     return stages
 
 @st.cache_data
-def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, tieu_chi_mua_vu, so_ngay_chuyen_vu, ec_nguong_chuyen_vu, data_tuoi, data_cp):
+def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, tieu_chi_mua_vu, so_ngay_chuyen_vu, ec_nguong_chuyen_vu, so_lan_tuoi_min, data_tuoi, data_cp):
     try:
         # 1. Trích xuất dữ liệu châm phân
         lich_su_ec_yc = []
@@ -127,7 +128,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                 try:
                     tg_hien_tai = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
                     
-                    # CẬP NHẬT: Xử lý an toàn cho TBEC (chống lỗi khi chuỗi rỗng "")
+                    # Xử lý an toàn cho TBEC (chống lỗi khi chuỗi rỗng "")
                     raw_tbec = str(item.get('TBEC', '0')).strip()
                     tbec_val = float(raw_tbec) / 100.0 if raw_tbec else 0.0
 
@@ -176,6 +177,8 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
         for mua_vu in danh_sach_mua_vu:
             ngay_bat_dau = mua_vu[0]['Thời gian']
             ngay_ket_thuc = mua_vu[-1]['Thời gian']
+            
+            # Lọc theo số ngày tối thiểu
             if (ngay_ket_thuc - ngay_bat_dau).days < SO_NGAY_TOI_THIEU: continue
 
             cac_cu_tuoi = []; tg_bat = None; tong_lan = 0
@@ -190,6 +193,10 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                         })
                         tong_lan += 1
                     tg_bat = None
+
+            # LỌC MÙA VỤ RÁC: Nếu tổng số cữ tưới nhỏ hơn cấu hình thì bỏ qua luôn mùa vụ này
+            if tong_lan < so_lan_tuoi_min:
+                continue
 
             thong_ke = {}
             for cu in cac_cu_tuoi:
@@ -252,22 +259,23 @@ else:
             else: raw_data_cp.append(data)
         
         with st.spinner('Đang gộp file và phân tích dữ liệu...'):
+            # Đã cập nhật truyền biến SO_LAN_TUOI_TOI_THIEU vào hàm process_data
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
-                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, TIEU_CHI_MUA_VU, SO_NGAY_CHUYEN_VU, EC_NGUONG_CHUYEN_VU, raw_data_tuoi, raw_data_cp 
+                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, TIEU_CHI_MUA_VU, SO_NGAY_CHUYEN_VU, EC_NGUONG_CHUYEN_VU, SO_LAN_TUOI_TOI_THIEU, raw_data_tuoi, raw_data_cp 
             )
 
         if ket_qua is None:
             st.error(thong_bao)
         elif len(ket_qua) == 0:
-            st.warning("⚠️ Không tìm thấy mùa vụ nào đủ số ngày tối thiểu để phân tích. Hãy kiểm tra lại khoảng thời gian của dữ liệu hoặc điều kiện cắt mùa vụ.")
+            st.warning("⚠️ Không tìm thấy mùa vụ nào đủ điều kiện để phân tích (thời gian hoặc số cữ tưới không đạt). Hãy kiểm tra lại cấu hình lọc ở thanh bên.")
         else:
             st.success(f"Đã xử lý xong! Cắt mùa vụ theo: {TIEU_CHI_MUA_VU}")
             
             for idx, mua_vu in enumerate(ket_qua):
                 st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
                 so_ngay_mua_vu = (mua_vu['ngay_ket_thuc'] - mua_vu['ngay_bat_dau']).days + 1
-                st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Cữ tưới: **{mua_vu['tong_lan_tuoi']}** lần")
+                st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
                 
                 data_mua_vu = mua_vu['data'] 
                 
