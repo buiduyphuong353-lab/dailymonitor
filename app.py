@@ -16,20 +16,20 @@ st.title("🌱 Dashboard Phân Tích Giai Đoạn Tưới Nhỏ Giọt")
 st.sidebar.header("📁 Tải Dữ Liệu Lên")
 
 # 1. Tải nhiều file Tưới & Tạo Checkbox
-file_tuoi_uploads = st.sidebar.file_uploader("1. Tải các file Lịch nhỏ giọt (.json)", type=['json'], accept_multiple_files=True)
+file_tuoi_uploads = st.sidebar.file_uploader("1. Tải file Lịch nhỏ giọt (.json)", type=['json'], accept_multiple_files=True)
 selected_tuoi_files = []
 if file_tuoi_uploads:
-    st.sidebar.markdown("**👉 Chọn file Lịch nhỏ giọt cần đọc:**")
+    st.sidebar.markdown("**👉 Chọn file Lịch nhỏ giọt:**")
     for f in file_tuoi_uploads:
         if st.sidebar.checkbox(f"📄 {f.name}", value=True, key=f"tuoi_{f.name}"):
             selected_tuoi_files.append(f)
 
 # 2. Tải nhiều file Châm phân & Tạo Checkbox
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
-file_cham_phan_uploads = st.sidebar.file_uploader("2. Tải các file Châm phân (.json)", type=['json'], accept_multiple_files=True)
+file_cham_phan_uploads = st.sidebar.file_uploader("2. Tải file Châm phân (.json)", type=['json'], accept_multiple_files=True)
 selected_cp_files = []
 if file_cham_phan_uploads:
-    st.sidebar.markdown("**👉 Chọn file Châm phân cần đọc:**")
+    st.sidebar.markdown("**👉 Chọn file Châm phân:**")
     for f in file_cham_phan_uploads:
         if st.sidebar.checkbox(f"📄 {f.name}", value=True, key=f"cp_{f.name}"):
             selected_cp_files.append(f)
@@ -39,9 +39,13 @@ st.sidebar.header("⚙️ Cấu hình thông số")
 
 STT_CAN_TIM = st.sidebar.text_input("STT Cần Phân Tích", value="4")
 
-st.sidebar.subheader("Ngưỡng phân chia Giai đoạn")
-SO_NGAY_ON_DINH = st.sidebar.number_input("⏳ Số ngày ổn định (Chống nhiễu)", value=2, step=1, min_value=1, help="Số ngày liên tiếp có giá trị same same nhau để được công nhận là một Giai đoạn mới.")
+st.sidebar.subheader("Cắt Mùa Vụ")
+TIEU_CHI_MUA_VU = st.sidebar.radio("Tiêu chí xác định Mùa vụ mới:", ["⏳ Theo thời gian nghỉ tưới", "🧪 Theo sự sụt giảm EC"])
+SO_NGAY_CHUYEN_VU = st.sidebar.number_input("Số ngày nghỉ tối thiểu (Nếu chọn Thời gian)", value=2.0)
+EC_NGUONG_CHUYEN_VU = st.sidebar.number_input("Ngưỡng EC chuyển vụ (Nếu chọn EC)", value=0.5, step=0.1, help="Khi EC Yêu cầu tụt xuống dưới mức này, hệ thống sẽ hiểu là đang dọn vườn/rửa giá thể.")
 
+st.sidebar.subheader("Ngưỡng phân chia Giai đoạn")
+SO_NGAY_ON_DINH = st.sidebar.number_input("⏳ Số ngày ổn định (Chống nhiễu)", value=2, step=1, min_value=1)
 SAI_SO_EC_TT = st.sidebar.number_input("1. Sai số EC Thực Tế", value=0.20, step=0.05)
 SAI_SO_EC_YC = st.sidebar.number_input("2. Sai số EC Yêu Cầu", value=0.15, step=0.05)
 SAI_SO_TONG_PHUT = st.sidebar.number_input("3. Sai số Tổng Thời Gian (Phút)", value=10.0, step=1.0)
@@ -49,7 +53,6 @@ SAI_SO_TONG_PHUT = st.sidebar.number_input("3. Sai số Tổng Thời Gian (Phú
 st.sidebar.subheader("Ngưỡng lọc dữ liệu")
 GIAY_TUOI_TOI_THIEU = st.sidebar.number_input("Giây tưới tối thiểu", value=20)
 GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa (Lọc lỗi)", value=3600)
-SO_NGAY_CHUYEN_VU = 2.0
 SO_NGAY_TOI_THIEU = 7
 
 # ==========================================
@@ -104,8 +107,9 @@ def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
     return stages
 
 @st.cache_data
-def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, data_tuoi, data_cp):
+def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, tieu_chi_mua_vu, so_ngay_chuyen_vu, ec_nguong_chuyen_vu, data_tuoi, data_cp):
     try:
+        # 1. Trích xuất dữ liệu châm phân
         lich_su_ec_yc = []
         for item in data_cp:
             if str(item.get('STT')) == stt and item.get('Thời gian') and 'EC yêu cầu' in item:
@@ -116,6 +120,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                 except ValueError: pass
         lich_su_ec_yc.sort(key=lambda x: x['Thoi_gian'])
 
+        # 2. Lọc dữ liệu tưới và gán EC Yêu cầu
         du_lieu_da_loc = []
         for item in data_tuoi:
             if str(item.get('STT')) == stt and item.get('Thời gian'):
@@ -124,22 +129,42 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                     'Thời gian': tg_hien_tai,
                     'Trạng thái': str(item.get('Trạng thái', '')).strip(),
                     'EC_Yeu_Cau': lay_ec_yeu_cau_tai_thoi_diem(tg_hien_tai, lich_su_ec_yc),
-                    'EC_Thuc_Te': float(item.get('TBEC', 0)) / 100.0,
-                    'pH': float(item.get('TBPH', 0)) / 100.0
+                    'EC_Thuc_Te': float(item.get('TBEC', 0)) / 100.0
                 })
 
         if not du_lieu_da_loc: return None, f"❌ Không có dữ liệu cho STT {stt}."
         du_lieu_da_loc.sort(key=lambda x: x['Thời gian'])
 
+        # 3. Phân cắt Mùa vụ theo tiêu chí được chọn
         danh_sach_mua_vu = []
         mua_hien_tai = [du_lieu_da_loc[0]]
+        dang_nghi_vu = (du_lieu_da_loc[0]['EC_Yeu_Cau'] <= ec_nguong_chuyen_vu)
+
         for i in range(1, len(du_lieu_da_loc)):
-            if (du_lieu_da_loc[i]['Thời gian'] - du_lieu_da_loc[i-1]['Thời gian']) > timedelta(days=SO_NGAY_CHUYEN_VU):
-                danh_sach_mua_vu.append(mua_hien_tai)
+            dong = du_lieu_da_loc[i]
+            dong_truoc = du_lieu_da_loc[i-1]
+            cat_vu = False
+
+            if tieu_chi_mua_vu == "⏳ Theo thời gian nghỉ tưới":
+                if (dong['Thời gian'] - dong_truoc['Thời gian']) > timedelta(days=so_ngay_chuyen_vu):
+                    cat_vu = True
+            else: # Theo sụt giảm EC
+                if dong['EC_Yeu_Cau'] <= ec_nguong_chuyen_vu:
+                    dang_nghi_vu = True
+                else:
+                    if dang_nghi_vu: 
+                        cat_vu = True # Vừa vượt ngưỡng trở lại -> Vụ mới
+                        dang_nghi_vu = False
+            
+            if cat_vu:
+                if mua_hien_tai: danh_sach_mua_vu.append(mua_hien_tai)
                 mua_hien_tai = []
-            mua_hien_tai.append(du_lieu_da_loc[i])
+            
+            mua_hien_tai.append(dong)
+            
         if mua_hien_tai: danh_sach_mua_vu.append(mua_hien_tai)
 
+        # 4. Gom nhóm theo ngày và tính toán giai đoạn
         ket_qua_bao_cao = []
         for mua_vu in danh_sach_mua_vu:
             ngay_bat_dau = mua_vu[0]['Thời gian']
@@ -154,7 +179,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                     if giay_min <= giay_chay <= giay_max:
                         cac_cu_tuoi.append({
                             'Ngày': tg_bat.date(), 'Giây chạy': giay_chay,
-                            'EC_Yeu_Cau': dong['EC_Yeu_Cau'], 'EC_Thuc_Te': dong['EC_Thuc_Te'], 'pH': dong['pH']
+                            'EC_Yeu_Cau': dong['EC_Yeu_Cau'], 'EC_Thuc_Te': dong['EC_Thuc_Te']
                         })
                         tong_lan += 1
                     tg_bat = None
@@ -162,15 +187,15 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             thong_ke = {}
             for cu in cac_cu_tuoi:
                 ng = cu['Ngày']
-                if ng not in thong_ke: thong_ke[ng] = {'So_lan': 0, 'Tong_giay': 0, 'Tong_EC_YC': 0, 'Tong_EC_TT': 0, 'Tong_pH': 0}
+                if ng not in thong_ke: thong_ke[ng] = {'So_lan': 0, 'Tong_giay': 0, 'Tong_EC_YC': 0, 'Tong_EC_TT': 0}
                 thong_ke[ng]['So_lan'] += 1
                 thong_ke[ng]['Tong_giay'] += cu['Giây chạy']
                 thong_ke[ng]['Tong_EC_YC'] += cu['EC_Yeu_Cau']
                 thong_ke[ng]['Tong_EC_TT'] += cu['EC_Thuc_Te']
-                thong_ke[ng]['Tong_pH'] += cu['pH']
+
+            if not thong_ke: continue
 
             danh_sach_ngay = sorted(thong_ke.keys())
-            
             ec_tt_vals = [thong_ke[n]['Tong_EC_TT'] / thong_ke[n]['So_lan'] for n in danh_sach_ngay]
             ec_yc_vals = [thong_ke[n]['Tong_EC_YC'] / thong_ke[n]['So_lan'] for n in danh_sach_ngay]
             tong_phut_vals = [thong_ke[n]['Tong_giay'] / 60 for n in danh_sach_ngay]
@@ -189,8 +214,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                     "Số_Lần": thong_ke[ngay]['So_lan'],
                     "Tổng_TG_Phút": round(tong_phut_vals[i], 2),
                     "EC_Yêu_Cầu": round(ec_yc_vals[i], 2),
-                    "EC_Thực_Tế": round(ec_tt_vals[i], 2),
-                    "pH_TB": round(thong_ke[ngay]['Tong_pH'] / thong_ke[ngay]['So_lan'], 2)
+                    "EC_Thực_Tế": round(ec_tt_vals[i], 2)
                 })
 
             ket_qua_bao_cao.append({"ngay_bat_dau": ngay_bat_dau, "ngay_ket_thuc": ngay_ket_thuc, "tong_lan_tuoi": tong_lan, "data": bang_bao_cao_ngay})
@@ -208,43 +232,63 @@ else:
         raw_data_tuoi = []
         raw_data_cp = []
         
-        # Gộp tất cả dữ liệu từ các file Lịch nhỏ giọt ĐƯỢC TÍCH
         for f in selected_tuoi_files:
             f.seek(0)
             data = json.load(f)
-            if isinstance(data, list):
-                raw_data_tuoi.extend(data)
-            else:
-                raw_data_tuoi.append(data)
+            if isinstance(data, list): raw_data_tuoi.extend(data)
+            else: raw_data_tuoi.append(data)
                 
-        # Gộp tất cả dữ liệu từ các file Châm phân ĐƯỢC TÍCH
         for f in selected_cp_files:
             f.seek(0)
             data = json.load(f)
-            if isinstance(data, list):
-                raw_data_cp.extend(data)
-            else:
-                raw_data_cp.append(data)
+            if isinstance(data, list): raw_data_cp.extend(data)
+            else: raw_data_cp.append(data)
         
         with st.spinner('Đang gộp file và phân tích dữ liệu...'):
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
-                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, raw_data_tuoi, raw_data_cp 
+                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, TIEU_CHI_MUA_VU, SO_NGAY_CHUYEN_VU, EC_NGUONG_CHUYEN_VU, raw_data_tuoi, raw_data_cp 
             )
 
         if ket_qua is None:
             st.error(thong_bao)
         else:
-            st.success(f"Đã gộp {len(selected_tuoi_files)} file Tưới & {len(selected_cp_files)} file Châm phân. Phân tích hoàn tất cho STT = {STT_CAN_TIM}!")
+            st.success(f"Đã xử lý xong! Cắt mùa vụ theo: {TIEU_CHI_MUA_VU}")
             
             for idx, mua_vu in enumerate(ket_qua):
                 st.markdown(f"### 🌿 MÙA VỤ SỐ {idx + 1}")
-                
                 so_ngay_mua_vu = (mua_vu['ngay_ket_thuc'] - mua_vu['ngay_bat_dau']).days + 1
-                st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Tổng cữ tưới hợp lệ: **{mua_vu['tong_lan_tuoi']}** lần")
+                st.caption(f"🗓️ Từ **{mua_vu['ngay_bat_dau'].strftime('%d/%m/%Y')}** đến **{mua_vu['ngay_ket_thuc'].strftime('%d/%m/%Y')}** ({so_ngay_mua_vu} ngày) | 💧 Cữ tưới: **{mua_vu['tong_lan_tuoi']}** lần")
                 
                 data_mua_vu = mua_vu['data'] 
                 
+                # --- TÍNH TOÁN % TƯƠNG THÍCH THIẾT BỊ ---
+                tong_tuong_thich = 0
+                count_days = 0
+                for row in data_mua_vu:
+                    if row['EC_Yêu_Cầu'] > 0:
+                        sai_lech = abs(row['EC_Thực_Tế'] - row['EC_Yêu_Cầu']) / row['EC_Yêu_Cầu']
+                        ty_le = max(0, 100 - sai_lech * 100)
+                        tong_tuong_thich += ty_le
+                        count_days += 1
+                
+                avg_tuong_thich = (tong_tuong_thich / count_days) if count_days > 0 else 0
+                
+                # --- KHUNG KẾT LUẬN AI ---
+                with st.expander(f"💡 ĐÁNH GIÁ VẬN HÀNH (Bấm để xem kết luận)", expanded=True):
+                    col_a, col_b = st.columns([1, 2])
+                    with col_a:
+                        st.metric("Tương thích EC Thiết bị", f"{round(avg_tuong_thich, 1)}%")
+                    
+                    with col_b:
+                        if avg_tuong_thich >= 90:
+                            st.success("**🟢 VẬN HÀNH TỐI ƯU:** Hệ thống châm phân đáp ứng cực kỳ chính xác lệnh của kỹ sư. Mùa vụ duy trì ổn định.")
+                        elif avg_tuong_thich >= 80:
+                            st.warning("**🟡 CẢNH BÁO NHẸ:** Hệ thống có độ lệch nhẹ giữa Yêu cầu và Thực tế. Cần theo dõi thêm áp lực bơm định lượng.")
+                        else:
+                            st.error("**🔴 RỦI RO HỆ THỐNG:** Sai lệch quá lớn (>20%). Cây có thể đang bị thiếu hụt dinh dưỡng. Cần kiểm tra rò rỉ phân, e khí bơm hoặc bẩn cảm biến ngay lập tức.")
+                
+                # --- BIỂU ĐỒ ---
                 tieuchi_mapping = {
                     "🎯 EC Yêu Cầu (Trung bình)": {"cot_gia_tri": "EC_Yêu_Cầu", "cot_giai_doan": "GĐ_EC_YC"},
                     "🧪 EC Thực Tế (Trung bình)": {"cot_gia_tri": "EC_Thực_Tế", "cot_giai_doan": "GĐ_EC_Thực"},
@@ -253,8 +297,7 @@ else:
                 
                 col1, col2 = st.columns([1, 2])
                 with col1:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    tieuchi_chon = st.selectbox(f"📊 Chọn tiêu chí biểu đồ (Mùa vụ {idx + 1}):", list(tieuchi_mapping.keys()), key=f"selectbox_{idx}")
+                    tieuchi_chon = st.selectbox(f"📊 Chọn tiêu chí biểu đồ (Vụ {idx + 1}):", list(tieuchi_mapping.keys()), key=f"selectbox_{idx}")
                 
                 cot_du_lieu = tieuchi_mapping[tieuchi_chon]["cot_gia_tri"]
                 cot_giai_doan = tieuchi_mapping[tieuchi_chon]["cot_giai_doan"]
@@ -271,47 +314,33 @@ else:
                 fig.update_layout(xaxis_tickangle=-45, yaxis=dict(range=[0, max_y])) 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                st.markdown("---")
-                st.markdown(f"#### 🔍 Chi Tiết Theo {cot_giai_doan.replace('_', ' ')}")
+                # --- CHI TIẾT GIAI ĐOẠN ---
+                st.markdown(f"#### 🔍 Chi Tiết Bảng Dữ Liệu")
                 
                 danh_sach_gd = list(set([row[cot_giai_doan] for row in data_mua_vu]))
                 danh_sach_gd.sort(key=lambda x: int(x.replace('GĐ ', ''))) 
                 danh_sach_chon = ["Tất cả các Giai đoạn"] + danh_sach_gd
                 
-                gd_chon = st.selectbox(
-                    "👉 Chọn Giai đoạn để xem chi tiết:", 
-                    danh_sach_chon, 
-                    key=f"select_gd_{idx}"
-                )
+                gd_chon = st.selectbox("👉 Chọn Giai đoạn lọc Dataframe:", danh_sach_chon, key=f"select_gd_{idx}")
                 
                 if gd_chon == "Tất cả các Giai đoạn":
                     data_filtered = data_mua_vu
                 else:
                     data_filtered = [row for row in data_mua_vu if row[cot_giai_doan] == gd_chon]
-                    
                     if data_filtered:
-                        st.info(f"**📊 Thống kê tóm tắt cho {gd_chon}:**")
-                        col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns([2, 1, 1.2, 1.2, 1.2, 1])
-                        
-                        ngay_dau = data_filtered[0]['Ngày_Str']
-                        ngay_cuoi = data_filtered[-1]['Ngày_Str']
+                        col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
                         so_ngay = len(data_filtered)
-                        
                         tb_ec_yc = sum(row['EC_Yêu_Cầu'] for row in data_filtered) / so_ngay
                         tb_ec_tt = sum(row['EC_Thực_Tế'] for row in data_filtered) / so_ngay
                         tb_tg = sum(row['Tổng_TG_Phút'] for row in data_filtered) / so_ngay
-                        tb_ph = sum(row['pH_TB'] for row in data_filtered) / so_ngay
                         
-                        col_m1.metric("Thời gian", f"{ngay_dau} - {ngay_cuoi}")
+                        col_m1.metric("Thời gian", f"{data_filtered[0]['Ngày_Str']}")
                         col_m2.metric("Kéo dài", f"{so_ngay} ngày")
                         col_m3.metric("EC Yêu Cầu (TB)", f"{round(tb_ec_yc, 2)}")
                         col_m4.metric("EC Thực Tế (TB)", f"{round(tb_ec_tt, 2)}")
                         col_m5.metric("TG Tưới (TB)", f"{round(tb_tg, 2)} phút")
-                        col_m6.metric("pH (TB)", f"{round(tb_ph, 2)}")
                         st.markdown("<br>", unsafe_allow_html=True)
 
-                st.markdown("#### 📋 Bảng Dữ Liệu")
-                
                 data_display = []
                 for row in data_filtered:
                     data_display.append({
@@ -322,8 +351,7 @@ else:
                         "💧 Số Lần": row["Số_Lần"],
                         "⏱️ Tổng TG (Ph)": row["Tổng_TG_Phút"],
                         "🎯 EC Y.Cầu": row["EC_Yêu_Cầu"],
-                        "🧪 EC T.Tế": row["EC_Thực_Tế"],
-                        "⚗️ pH TB": row["pH_TB"]
+                        "🧪 EC T.Tế": row["EC_Thực_Tế"]
                     })
                 
                 st.dataframe(data_display, use_container_width=True)
