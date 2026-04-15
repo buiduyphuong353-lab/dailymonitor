@@ -329,7 +329,7 @@ def main():
             ngay for ngay in so_cai_du_lieu_hoan_chinh.keys() 
             if vu_mua_dang_xet[0] <= datetime.strptime(ngay, "%Y-%m-%d").date() <= vu_mua_dang_xet[1]
         ])
-        
+         
         # BƯỚC 3: Cắt Giai Đoạn
         danh_sach_cac_giai_doan_cua_vu = chia_nho_mua_vu_thanh_cac_giai_doan(
             cac_ngay_trong_vu_mua_nay, 
