@@ -59,13 +59,14 @@ GIAY_TUOI_TOI_THIEU = st.sidebar.number_input("Giây tưới tối thiểu", val
 GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa (Lọc lỗi)", value=3600)
 SO_NGAY_TOI_THIEU = 7
 SO_LAN_TUOI_TOI_THIEU = st.sidebar.number_input("Số cữ tưới tối thiểu/Vụ", value=10, step=1, help="Loại bỏ các mùa vụ rác có quá ít cữ tưới.")
-# THÊM ĐIỀU KIỆN LỌC SỐ GIAI ĐOẠN
 SO_GIAI_DOAN_TOI_THIEU = st.sidebar.number_input("Số giai đoạn tối thiểu/Vụ", value=4, step=1, help="Chỉ ghi nhận những mùa vụ hoàn chỉnh trải qua đủ số giai đoạn (ví dụ >= 4 giai đoạn).")
+
 
 # ==========================================
 # 🧠 HÀM XỬ LÝ DỮ LIỆU CỐT LÕI
 # ==========================================
 def lay_ec_yeu_cau_tai_thoi_diem(tg_tuoi, lich_su_ec):
+    """Lấy giá trị EC Yêu cầu gần nhất trước hoặc bằng thời điểm tưới."""
     ec_hien_tai = 0.0
     for record in lich_su_ec:
         if record['Thoi_gian'] <= tg_tuoi:
@@ -74,47 +75,50 @@ def lay_ec_yeu_cau_tai_thoi_diem(tg_tuoi, lich_su_ec):
             break
     return ec_hien_tai
 
-def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
+def xac_dinh_giai_doan_chung(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
+    """
+    Thuật toán chung xác định Giai đoạn cho cả EC Thực tế, EC Yêu cầu và Thời gian tưới.
+    Dựa trên nguyên lý: So sánh giá trị ngày hiện tại với Mốc. Thêm sai số và số ngày chống nhiễu.
+    """
+    if not values or len(danh_sach_ngay) != len(values):
+        return {}
+
     stages = {}
-    gd_current = 1
-    goc_val = None
-    buffer = []
+    gd_hien_tai = 1
+    moc_gia_tri = values[0] 
+    dem_ngay_lech = 0       
     
-    for i, ngay in enumerate(danh_sach_ngay):
-        val = values[i]
+    for i in range(len(danh_sach_ngay)):
+        ngay = danh_sach_ngay[i]
+        gia_tri_hom_nay = values[i]
         
-        if goc_val is None:
-            goc_val = val
-            stages[ngay] = gd_current
-            continue
-            
-        if abs(val - goc_val) >= sai_so:
-            buffer.append({'ngay': ngay, 'val': val})
-            
-            if len(buffer) >= so_ngay_on_dinh:
-                buf_vals = [x['val'] for x in buffer]
-                if max(buf_vals) - min(buf_vals) <= sai_so:
-                    gd_current += 1
-                    goc_val = sum(buf_vals) / len(buf_vals) 
-                    for item in buffer:
-                        stages[item['ngay']] = gd_current
-                    buffer = []
-                else:
-                    oldest = buffer.pop(0)
-                    stages[oldest['ngay']] = gd_current
+        # 1. Tính độ lệch so với mốc
+        do_lech = abs(gia_tri_hom_nay - moc_gia_tri)
+        
+        # 2. Kiểm tra xem có vượt sai số không
+        if do_lech >= sai_so:
+            dem_ngay_lech += 1
         else:
-            for item in buffer:
-                stages[item['ngay']] = gd_current
-            buffer = []
-            stages[ngay] = gd_current
+            dem_ngay_lech = 0  # Nếu chỉ là nhiễu, quay về mức cũ -> reset
             
-    for item in buffer:
-        stages[item['ngay']] = gd_current
-        
+        # 3. Chuyển giai đoạn nếu lệch đủ lâu
+        if dem_ngay_lech >= so_ngay_on_dinh:
+            gd_hien_tai += 1
+            moc_gia_tri = gia_tri_hom_nay 
+            dem_ngay_lech = 0             
+            
+            # Gán ngược lại GĐ mới cho các ngày chống nhiễu vừa qua
+            for back_step in range(so_ngay_on_dinh):
+                ngay_truoc = danh_sach_ngay[i - back_step]
+                stages[ngay_truoc] = gd_hien_tai
+                
+        # 4. Gán giai đoạn cho ngày hiện tại (nếu chưa gán)
+        if ngay not in stages or stages[ngay] < gd_hien_tai:
+            stages[ngay] = gd_hien_tai
+            
     return stages
 
 @st.cache_data
-# Đã thêm tham số so_gd_min vào hàm
 def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, tieu_chi_mua_vu, so_ngay_chuyen_vu, ec_nguong_chuyen_vu, so_lan_tuoi_min, so_gd_min, data_tuoi, data_cp):
     try:
         # 1. Trích xuất dữ liệu châm phân
@@ -134,7 +138,6 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             if str(item.get('STT')) == stt and item.get('Thời gian'):
                 try:
                     tg_hien_tai = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
-                    
                     raw_tbec = str(item.get('TBEC', '0')).strip()
                     tbec_val = float(raw_tbec) / 100.0 if raw_tbec else 0.0
 
@@ -220,16 +223,16 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             ec_yc_vals = [thong_ke[n]['Tong_EC_YC'] / thong_ke[n]['So_lan'] for n in danh_sach_ngay]
             tong_phut_vals = [thong_ke[n]['Tong_giay'] / 60 for n in danh_sach_ngay]
             
-            stages_ec_tt = phan_tich_giai_doan_array(danh_sach_ngay, ec_tt_vals, ss_ec_tt, so_ngay_on_dinh)
-            stages_ec_yc = phan_tich_giai_doan_array(danh_sach_ngay, ec_yc_vals, ss_ec_yc, so_ngay_on_dinh)
-            stages_tuoi = phan_tich_giai_doan_array(danh_sach_ngay, tong_phut_vals, ss_tong_phut, so_ngay_on_dinh)
+            # ---> SỬ DỤNG HÀM CHUNG Ở ĐÂY <---
+            stages_ec_tt = xac_dinh_giai_doan_chung(danh_sach_ngay, ec_tt_vals, ss_ec_tt, so_ngay_on_dinh)
+            stages_ec_yc = xac_dinh_giai_doan_chung(danh_sach_ngay, ec_yc_vals, ss_ec_yc, so_ngay_on_dinh)
+            stages_tuoi  = xac_dinh_giai_doan_chung(danh_sach_ngay, tong_phut_vals, ss_tong_phut, so_ngay_on_dinh)
 
-            # LỌC SỐ GIAI ĐOẠN: Xác định xem mùa vụ này đã đạt tới Giai đoạn số mấy (max)
+            # LỌC SỐ GIAI ĐOẠN
             max_gd_ec_tt = max(stages_ec_tt.values()) if stages_ec_tt else 0
             max_gd_ec_yc = max(stages_ec_yc.values()) if stages_ec_yc else 0
             max_gd_tuoi = max(stages_tuoi.values()) if stages_tuoi else 0
             
-            # Nếu tất cả các tiêu chí đều không đạt tới số giai đoạn tối thiểu -> Bỏ qua mùa vụ này
             max_gd_chung = max(max_gd_ec_tt, max_gd_ec_yc, max_gd_tuoi)
             if max_gd_chung < so_gd_min:
                 continue
@@ -275,7 +278,6 @@ else:
             else: raw_data_cp.append(data)
         
         with st.spinner('Đang gộp file và phân tích dữ liệu...'):
-            # Đã cập nhật tham số SO_GIAI_DOAN_TOI_THIEU
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
                 GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, TIEU_CHI_MUA_VU, SO_NGAY_CHUYEN_VU, EC_NGUONG_CHUYEN_VU, SO_LAN_TUOI_TOI_THIEU, SO_GIAI_DOAN_TOI_THIEU, raw_data_tuoi, raw_data_cp 
@@ -307,7 +309,7 @@ else:
                 
                 avg_tuong_thich = (tong_tuong_thich / count_days) if count_days > 0 else 0
                 
-                # --- KHUNG KẾT LUẬN AI ---
+                # --- KHUNG KẾT LUẬN VẬN HÀNH ---
                 with st.expander(f"💡 ĐÁNH GIÁ VẬN HÀNH (Bấm để xem kết luận)", expanded=True):
                     col_a, col_b = st.columns([1, 2])
                     with col_a:
