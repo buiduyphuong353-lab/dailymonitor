@@ -39,9 +39,31 @@ st.sidebar.header("⚙️ Cấu hình thông số")
 
 STT_CAN_TIM = st.sidebar.text_input("STT Cần Phân Tích", value="4")
 
-st.sidebar.subheader("Ngưỡng phân chia Giai đoạn")
-SO_NGAY_ON_DINH = st.sidebar.number_input("⏳ Số ngày ổn định (Chống nhiễu)", value=2, step=1, min_value=1, help="Số ngày liên tiếp có giá trị same same nhau để được công nhận là một Giai đoạn mới.")
+# ---------------------------------------------------------
+# MỚI: THANH DROPDOWN CHỌN TIÊU CHÍ TÁCH MÙA VỤ
+# ---------------------------------------------------------
+st.sidebar.subheader("🎯 Tiêu chí phát hiện Mùa vụ mới")
+TIEU_CHI_TACH_VU = st.sidebar.selectbox(
+    "Phân tách mùa vụ dựa trên:",
+    [
+        "⏱️ Khoảng cách ngày tưới (Mặc định)", 
+        "🧪 Cú rớt EC Thực Tế (Reset bầu)", 
+        "🎯 Cú rớt EC Yêu Cầu (Reset bầu)"
+    ],
+    help="Chọn thuật toán để hệ thống biết khi nào thì kết thúc vụ cũ và bắt đầu vụ mới."
+)
 
+# Chỉ hiển thị ngưỡng EC nếu người dùng chọn tách vụ bằng EC
+if "EC" in TIEU_CHI_TACH_VU:
+    NGUONG_EC_RESET = st.sidebar.number_input("Ngưỡng EC báo hiệu Vụ Mới (Reset bầu)", value=0.8, step=0.1)
+    SO_NGAY_CHUYEN_VU = 2.0 # Vẫn giữ ngầm để dự phòng
+else:
+    SO_NGAY_CHUYEN_VU = st.sidebar.number_input("Số ngày nghỉ tối đa để qua vụ mới", value=2.0, step=1.0)
+    NGUONG_EC_RESET = 0.0 # Không dùng đến
+# ---------------------------------------------------------
+
+st.sidebar.subheader("Ngưỡng phân chia Giai đoạn")
+SO_NGAY_ON_DINH = st.sidebar.number_input("⏳ Số ngày ổn định (Chống nhiễu)", value=2, step=1, min_value=1)
 SAI_SO_EC_TT = st.sidebar.number_input("1. Sai số EC Thực Tế", value=0.20, step=0.05)
 SAI_SO_EC_YC = st.sidebar.number_input("2. Sai số EC Yêu Cầu", value=0.15, step=0.05)
 SAI_SO_TONG_PHUT = st.sidebar.number_input("3. Sai số Tổng Thời Gian (Phút)", value=10.0, step=1.0)
@@ -49,7 +71,6 @@ SAI_SO_TONG_PHUT = st.sidebar.number_input("3. Sai số Tổng Thời Gian (Phú
 st.sidebar.subheader("Ngưỡng lọc dữ liệu")
 GIAY_TUOI_TOI_THIEU = st.sidebar.number_input("Giây tưới tối thiểu", value=20)
 GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa (Lọc lỗi)", value=3600)
-SO_NGAY_CHUYEN_VU = 2.0
 SO_NGAY_TOI_THIEU = 7
 
 # ==========================================
@@ -104,7 +125,7 @@ def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
     return stages
 
 @st.cache_data
-def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, data_tuoi, data_cp):
+def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, so_ngay_chuyen_vu, tieu_chi_tach, nguong_ec_reset, data_tuoi, data_cp):
     try:
         lich_su_ec_yc = []
         for item in data_cp:
@@ -134,10 +155,32 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
         danh_sach_mua_vu = []
         mua_hien_tai = [du_lieu_da_loc[0]]
         for i in range(1, len(du_lieu_da_loc)):
-            if (du_lieu_da_loc[i]['Thời gian'] - du_lieu_da_loc[i-1]['Thời gian']) > timedelta(days=SO_NGAY_CHUYEN_VU):
+            cat_vu = False
+            
+            # --- LOGIC TÁCH MÙA VỤ THEO LỰA CHỌN DROPDOWN ---
+            if tieu_chi_tach == "⏱️ Khoảng cách ngày tưới (Mặc định)":
+                if (du_lieu_da_loc[i]['Thời gian'] - du_lieu_da_loc[i-1]['Thời gian']).days > so_ngay_chuyen_vu:
+                    cat_vu = True
+                    
+            elif tieu_chi_tach == "🧪 Cú rớt EC Thực Tế (Reset bầu)":
+                ec_truoc = du_lieu_da_loc[i-1]['EC_Thuc_Te']
+                ec_nay = du_lieu_da_loc[i]['EC_Thuc_Te']
+                # Nếu cữ tưới trước đang ở mức cao (trên ngưỡng reset), mà cữ tưới này tụt xuống bằng/dưới ngưỡng => Bắt đầu vụ mới
+                if ec_truoc > nguong_ec_reset >= ec_nay:
+                    cat_vu = True
+                    
+            elif tieu_chi_tach == "🎯 Cú rớt EC Yêu Cầu (Reset bầu)":
+                ec_truoc = du_lieu_da_loc[i-1]['EC_Yeu_Cau']
+                ec_nay = du_lieu_da_loc[i]['EC_Yeu_Cau']
+                if ec_truoc > nguong_ec_reset >= ec_nay:
+                    cat_vu = True
+
+            if cat_vu:
                 danh_sach_mua_vu.append(mua_hien_tai)
                 mua_hien_tai = []
+                
             mua_hien_tai.append(du_lieu_da_loc[i])
+            
         if mua_hien_tai: danh_sach_mua_vu.append(mua_hien_tai)
 
         ket_qua_bao_cao = []
@@ -211,7 +254,6 @@ else:
         raw_data_tuoi = []
         raw_data_cp = []
         
-        # Gộp tất cả dữ liệu từ các file Lịch nhỏ giọt ĐƯỢC TÍCH
         for f in selected_tuoi_files:
             f.seek(0)
             data = json.load(f)
@@ -220,7 +262,6 @@ else:
             else:
                 raw_data_tuoi.append(data)
                 
-        # Gộp tất cả dữ liệu từ các file Châm phân ĐƯỢC TÍCH
         for f in selected_cp_files:
             f.seek(0)
             data = json.load(f)
@@ -232,7 +273,9 @@ else:
         with st.spinner('Đang gộp file và phân tích dữ liệu...'):
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
-                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, raw_data_tuoi, raw_data_cp 
+                GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, SO_NGAY_CHUYEN_VU,
+                TIEU_CHI_TACH_VU, NGUONG_EC_RESET, # ---> CHUYỀN THÊM BIẾN TỪ UI XUỐNG HÀM TÍNH TOÁN
+                raw_data_tuoi, raw_data_cp 
             )
 
         if ket_qua is None:
