@@ -66,7 +66,7 @@ def lay_ec_yeu_cau_tai_thoi_diem(tg_tuoi, lich_su_ec):
 
 def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
     stages = {}
-gd_current = 1
+    gd_current = 1
     goc_val = None
     buffer = []
     
@@ -137,7 +137,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             if (du_lieu_da_loc[i]['Thời gian'] - du_lieu_da_loc[i-1]['Thời gian']) > timedelta(days=SO_NGAY_CHUYEN_VU):
                 danh_sach_mua_vu.append(mua_hien_tai)
                 mua_hien_tai = []
-mua_hien_tai.append(du_lieu_da_loc[i])
+            mua_hien_tai.append(du_lieu_da_loc[i])
         if mua_hien_tai: danh_sach_mua_vu.append(mua_hien_tai)
 
         ket_qua_bao_cao = []
@@ -146,7 +146,9 @@ mua_hien_tai.append(du_lieu_da_loc[i])
             ngay_ket_thuc = mua_vu[-1]['Thời gian']
             if (ngay_ket_thuc - ngay_bat_dau).days < SO_NGAY_TOI_THIEU: continue
 
-            cac_cu_tuoi = []; tg_bat = None; tong_lan = 0
+            cac_cu_tuoi = []
+            tg_bat = None
+            tong_lan = 0
             for dong in mua_vu:
                 if dong['Trạng thái'] == 'Bật': tg_bat = dong['Thời gian']
                 elif dong['Trạng thái'] == 'Tắt' and tg_bat is not None:
@@ -189,14 +191,15 @@ mua_hien_tai.append(du_lieu_da_loc[i])
                     "Số_Lần": thong_ke[ngay]['So_lan'],
                     "Tổng_TG_Phút": round(tong_phut_vals[i], 2),
                     "EC_Yêu_Cầu": round(ec_yc_vals[i], 2),
-"EC_Thực_Tế": round(ec_tt_vals[i], 2),
+                    "EC_Thực_Tế": round(ec_tt_vals[i], 2),
                     "pH_TB": round(thong_ke[ngay]['Tong_pH'] / thong_ke[ngay]['So_lan'], 2)
                 })
 
             ket_qua_bao_cao.append({"ngay_bat_dau": ngay_bat_dau, "ngay_ket_thuc": ngay_ket_thuc, "tong_lan_tuoi": tong_lan, "data": bang_bao_cao_ngay})
             
         return ket_qua_bao_cao, "Thành công"
-    except Exception as e: return None, f"❌ Lỗi xử lý dữ liệu: {e}"
+    except Exception as e: 
+        return None, f"❌ Lỗi xử lý dữ liệu: {e}"
 
 # ==========================================
 # 📊 QUẢN LÝ LUỒNG CHẠY & HIỂN THỊ
@@ -248,7 +251,7 @@ else:
                 tieuchi_mapping = {
                     "🎯 EC Yêu Cầu (Trung bình)": {"cot_gia_tri": "EC_Yêu_Cầu", "cot_giai_doan": "GĐ_EC_YC"},
                     "🧪 EC Thực Tế (Trung bình)": {"cot_gia_tri": "EC_Thực_Tế", "cot_giai_doan": "GĐ_EC_Thực"},
-"⏱️ Tổng Thời Gian Tưới / Ngày (Phút)": {"cot_gia_tri": "Tổng_TG_Phút", "cot_giai_doan": "GĐ_Tưới"}
+                    "⏱️ Tổng Thời Gian Tưới / Ngày (Phút)": {"cot_gia_tri": "Tổng_TG_Phút", "cot_giai_doan": "GĐ_Tưới"}
                 }
                 
                 col1, col2 = st.columns([1, 2])
@@ -299,7 +302,7 @@ else:
                         
                         tb_ec_yc = sum(row['EC_Yêu_Cầu'] for row in data_filtered) / so_ngay
                         tb_ec_tt = sum(row['EC_Thực_Tế'] for row in data_filtered) / so_ngay
-tb_tg = sum(row['Tổng_TG_Phút'] for row in data_filtered) / so_ngay
+                        tb_tg = sum(row['Tổng_TG_Phút'] for row in data_filtered) / so_ngay
                         tb_ph = sum(row['pH_TB'] for row in data_filtered) / so_ngay
                         
                         col_m1.metric("Thời gian", f"{ngay_dau} - {ngay_cuoi}")
