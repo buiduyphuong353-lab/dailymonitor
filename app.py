@@ -67,10 +67,12 @@ SAI_SO_EC_TT = st.sidebar.number_input("1. Sai số EC Thực Tế", value=0.20,
 SAI_SO_EC_YC = st.sidebar.number_input("2. Sai số EC Yêu Cầu", value=0.15, step=0.05)
 SAI_SO_TONG_PHUT = st.sidebar.number_input("3. Sai số Tổng Thời Gian (Phút)", value=10.0, step=1.0)
 
-st.sidebar.subheader("Ngưỡng lọc dữ liệu")
+st.sidebar.subheader("Ngưỡng lọc dữ liệu (Loại bỏ nhiễu)")
 GIAY_TUOI_TOI_THIEU = st.sidebar.number_input("Giây tưới tối thiểu", value=20)
-GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa (Lọc lỗi)", value=3600)
-SO_NGAY_TOI_THIEU = st.sidebar.number_input("Số ngày tối thiểu 1 vụ (Chống nhiễu)", value=7, step=1, help="Chặn thuật toán cắt vụ ảo khi vụ chưa đủ số ngày tối thiểu.")
+GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa", value=3600)
+SO_NGAY_TOI_THIEU = st.sidebar.number_input("Số ngày tối thiểu 1 vụ", value=7, step=1, help="Chặn thuật toán cắt vụ ảo khi vụ chưa đủ số ngày tối thiểu.")
+# ---> MỚI THÊM: LỌC THEO SỐ CỮ TƯỚI TỐI THIỂU
+SO_LAN_TUOI_TOI_THIEU = st.sidebar.number_input("Số cữ tưới tối thiểu 1 vụ", value=50, step=10, help="Vứt bỏ các mùa vụ test máy, rửa ống có quá ít cữ tưới.")
 
 # ==========================================
 # 🧠 HÀM XỬ LÝ DỮ LIỆU CỐT LÕI
@@ -124,7 +126,7 @@ def phan_tich_giai_doan_array(danh_sach_ngay, values, sai_so, so_ngay_on_dinh):
     return stages
 
 @st.cache_data
-def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, so_ngay_chuyen_vu, tieu_chi_tach, nguong_ec_reset, so_ngay_toi_thieu_vu, data_tuoi, data_cp):
+def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_min, giay_max, so_ngay_chuyen_vu, tieu_chi_tach, nguong_ec_reset, so_ngay_toi_thieu_vu, so_lan_tuoi_toi_thieu, data_tuoi, data_cp):
     try:
         lich_su_ec_yc = []
         for item in data_cp:
@@ -190,8 +192,8 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
         for mua_vu in danh_sach_mua_vu:
             ngay_bat_dau = mua_vu[0]['Thời gian']
             ngay_ket_thuc = mua_vu[-1]['Thời gian']
-            if (ngay_ket_thuc - ngay_bat_dau).days < so_ngay_toi_thieu_vu: continue
-
+            
+            # Đếm trước tổng số cữ tưới hợp lệ
             cac_cu_tuoi = []
             tg_bat = None
             tong_lan = 0
@@ -206,6 +208,10 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                         })
                         tong_lan += 1
                     tg_bat = None
+
+            # BỘ LỌC CỨNG SAU CÙNG: Không đủ ngày HOẶC Không đủ số cữ tưới -> Vứt!
+            if (ngay_ket_thuc - ngay_bat_dau).days < so_ngay_toi_thieu_vu or tong_lan < so_lan_tuoi_toi_thieu:
+                continue
 
             thong_ke = {}
             for cu in cac_cu_tuoi:
@@ -277,7 +283,7 @@ else:
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
                 GIAY_TUOI_TOI_THIEU, GIAY_TUOI_TOI_DA, SO_NGAY_CHUYEN_VU,
-                TIEU_CHI_TACH_VU, NGUONG_EC_RESET, SO_NGAY_TOI_THIEU,
+                TIEU_CHI_TACH_VU, NGUONG_EC_RESET, SO_NGAY_TOI_THIEU, SO_LAN_TUOI_TOI_THIEU,
                 raw_data_tuoi, raw_data_cp 
             )
 
