@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import plotly.express as px
 
 # ==========================================
@@ -71,8 +71,34 @@ st.sidebar.subheader("Ngưỡng lọc dữ liệu (Loại bỏ nhiễu)")
 GIAY_TUOI_TOI_THIEU = st.sidebar.number_input("Giây tưới tối thiểu", value=20)
 GIAY_TUOI_TOI_DA = st.sidebar.number_input("Giây tưới tối đa", value=3600)
 SO_NGAY_TOI_THIEU = st.sidebar.number_input("Số ngày tối thiểu 1 vụ", value=7, step=1, help="Chặn thuật toán cắt vụ ảo khi vụ chưa đủ số ngày tối thiểu.")
-# ---> MỚI THÊM: LỌC THEO SỐ CỮ TƯỚI TỐI THIỂU
 SO_LAN_TUOI_TOI_THIEU = st.sidebar.number_input("Số cữ tưới tối thiểu 1 vụ", value=50, step=10, help="Vứt bỏ các mùa vụ test máy, rửa ống có quá ít cữ tưới.")
+
+# ==========================================
+# 🛠️ HÀM ĐỌC FILE JSON THÔNG MINH (CHỐNG LỖI)
+# ==========================================
+def doc_file_json_thong_minh(uploaded_file):
+    """Hàm tự động nhận diện và đọc file định dạng JSON chuẩn hoặc JSON Lines."""
+    uploaded_file.seek(0)
+    content = uploaded_file.read().decode('utf-8')
+    data_list = []
+    
+    try:
+        # Thử đọc kiểu JSON Array chuẩn
+        data = json.loads(content)
+        if isinstance(data, list):
+            data_list.extend(data)
+        else:
+            data_list.append(data)
+    except json.JSONDecodeError:
+        # Nếu lỗi (khả năng là định dạng JSON Lines - mỗi object 1 dòng)
+        for line in content.splitlines():
+            if line.strip():
+                try:
+                    data_list.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass # Bỏ qua các dòng lỗi (nếu có rác trong file)
+                    
+    return data_list
 
 # ==========================================
 # 🧠 HÀM XỬ LÝ DỮ LIỆU CỐT LÕI
@@ -141,16 +167,18 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
         du_lieu_da_loc = []
         for item in data_tuoi:
             if str(item.get('STT')) == stt and item.get('Thời gian'):
-                tg_hien_tai = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
-                du_lieu_da_loc.append({
-                    'Thời gian': tg_hien_tai,
-                    'Trạng thái': str(item.get('Trạng thái', '')).strip(),
-                    'EC_Yeu_Cau': lay_ec_yeu_cau_tai_thoi_diem(tg_hien_tai, lich_su_ec_yc),
-                    'EC_Thuc_Te': float(item.get('TBEC', 0)) / 100.0,
-                    'pH': float(item.get('TBPH', 0)) / 100.0
-                })
+                try:
+                    tg_hien_tai = datetime.strptime(item.get('Thời gian'), '%Y-%m-%d %H-%M-%S')
+                    du_lieu_da_loc.append({
+                        'Thời gian': tg_hien_tai,
+                        'Trạng thái': str(item.get('Trạng thái', '')).strip(),
+                        'EC_Yeu_Cau': lay_ec_yeu_cau_tai_thoi_diem(tg_hien_tai, lich_su_ec_yc),
+                        'EC_Thuc_Te': float(item.get('TBEC', 0)) / 100.0,
+                        'pH': float(item.get('TBPH', 0)) / 100.0
+                    })
+                except ValueError: pass
 
-        if not du_lieu_da_loc: return None, f"❌ Không có dữ liệu cho STT {stt}."
+        if not du_lieu_da_loc: return None, f"❌ Không có dữ liệu hợp lệ cho STT {stt}."
         du_lieu_da_loc.sort(key=lambda x: x['Thời gian'])
 
         danh_sach_mua_vu = []
@@ -161,7 +189,6 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             cat_vu = False
             so_ngay_da_qua = (du_lieu_da_loc[i]['Thời gian'] - ngay_bat_dau_vu_hien_tai).days
             
-            # --- LOGIC TÁCH MÙA VỤ: Có khóa chống nhiễu thời gian ---
             if so_ngay_da_qua >= so_ngay_toi_thieu_vu:
                 if tieu_chi_tach == "⏱️ Khoảng cách ngày tưới (Mặc định)":
                     if (du_lieu_da_loc[i]['Thời gian'] - du_lieu_da_loc[i-1]['Thời gian']).days > so_ngay_chuyen_vu:
@@ -193,12 +220,12 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
             ngay_bat_dau = mua_vu[0]['Thời gian']
             ngay_ket_thuc = mua_vu[-1]['Thời gian']
             
-            # Đếm trước tổng số cữ tưới hợp lệ
             cac_cu_tuoi = []
             tg_bat = None
             tong_lan = 0
             for dong in mua_vu:
-                if dong['Trạng thái'] == 'Bật': tg_bat = dong['Thời gian']
+                if dong['Trạng thái'] == 'Bật': 
+                    tg_bat = dong['Thời gian']
                 elif dong['Trạng thái'] == 'Tắt' and tg_bat is not None:
                     giay_chay = (dong['Thời gian'] - tg_bat).total_seconds()
                     if giay_min <= giay_chay <= giay_max:
@@ -209,7 +236,6 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                         tong_lan += 1
                     tg_bat = None
 
-            # BỘ LỌC CỨNG SAU CÙNG: Không đủ ngày HOẶC Không đủ số cữ tưới -> Vứt!
             if (ngay_ket_thuc - ngay_bat_dau).days < so_ngay_toi_thieu_vu or tong_lan < so_lan_tuoi_toi_thieu:
                 continue
 
@@ -224,6 +250,7 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
                 thong_ke[ng]['Tong_pH'] += cu['pH']
 
             danh_sach_ngay = sorted(thong_ke.keys())
+            if not danh_sach_ngay: continue
             
             ec_tt_vals = [thong_ke[n]['Tong_EC_TT'] / thong_ke[n]['So_lan'] for n in danh_sach_ngay]
             ec_yc_vals = [thong_ke[n]['Tong_EC_YC'] / thong_ke[n]['So_lan'] for n in danh_sach_ngay]
@@ -259,26 +286,20 @@ def process_data(stt, so_ngay_on_dinh, ss_ec_tt, ss_ec_yc, ss_tong_phut, giay_mi
 if not selected_tuoi_files or not selected_cp_files:
     st.info("👈 Vui lòng tải lên và TÍCH CHỌN ít nhất 1 file Lịch nhỏ giọt và 1 file Châm phân ở thanh bên trái để bắt đầu.")
 else:
-    try:
-        raw_data_tuoi = []
-        raw_data_cp = []
-        
-        for f in selected_tuoi_files:
-            f.seek(0)
-            data = json.load(f)
-            if isinstance(data, list):
-                raw_data_tuoi.extend(data)
-            else:
-                raw_data_tuoi.append(data)
-                
-        for f in selected_cp_files:
-            f.seek(0)
-            data = json.load(f)
-            if isinstance(data, list):
-                raw_data_cp.extend(data)
-            else:
-                raw_data_cp.append(data)
-        
+    raw_data_tuoi = []
+    raw_data_cp = []
+    
+    # Đọc dữ liệu với hàm thông minh mới
+    for f in selected_tuoi_files:
+        raw_data_tuoi.extend(doc_file_json_thong_minh(f))
+            
+    for f in selected_cp_files:
+        raw_data_cp.extend(doc_file_json_thong_minh(f))
+    
+    # Kiểm tra xem có dữ liệu hợp lệ được bóc tách ra không
+    if len(raw_data_tuoi) == 0 or len(raw_data_cp) == 0:
+        st.error("❌ Không thể đọc được dữ liệu JSON từ các file đã chọn. Vui lòng kiểm tra lại cấu trúc file.")
+    else:
         with st.spinner('Đang gộp file và phân tích dữ liệu...'):
             ket_qua, thong_bao = process_data(
                 STT_CAN_TIM, SO_NGAY_ON_DINH, SAI_SO_EC_TT, SAI_SO_EC_YC, SAI_SO_TONG_PHUT, 
@@ -385,6 +406,3 @@ else:
                 
                 st.dataframe(data_display, use_container_width=True)
                 st.divider()
-
-    except json.JSONDecodeError:
-        st.error("❌ Lỗi định dạng file! Vui lòng đảm bảo bạn đã tải lên đúng file .json hợp lệ.")
