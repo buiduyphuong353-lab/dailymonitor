@@ -1,3 +1,5 @@
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)]([https://link-streamlit-cua-ban.streamlit.app/](https://dailymonitor-mklt2vyjgvkmpt2eexjjte.streamlit.app/))
+# 📊 Hệ Thống Giám Sát và Phân Tích Dữ Liệu Tưới Tiêu (OSFARM)
 
- **Xem trực tiếp Dashboard giám sát tại đây!**
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://dailymonitor-mklt2vyjgvkmpt2eexjjte.streamlit.app/)
+
+🚀 **Truy cập trực tiếp Dashboard phân tích tại link trên!**
